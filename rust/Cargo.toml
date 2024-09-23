@@ -1,0 +1,19 @@
+[package]
+name = "mavdac"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+name = "mavdac"
+crate-type = ["cdylib"]
+
+[dependencies]
+clap = "4.5.18"
+fitrs = "0.5.0"
+glob = "0.3.1"
+ndarray = "0.15.6"
+ndarray-inverse = "0.1.9"
+pyo3 = "0.22.0"
+rayon = "1.10.0"
+rustfft = "6.2.0"
