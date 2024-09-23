@@ -1,11 +1,13 @@
 use std::{f64::consts::PI, path::{Path, PathBuf}};
 
 use fitrs::{Fits, FitsData, Hdu, HeaderValue};
+use pyo3::pyclass;
 
 use crate::{Centroid, Grid, MavDACError, Result, Vec2D};
 
 
 #[derive(Debug, Clone)]
+#[pyclass]
 pub struct Pixel {
     x: usize,
     y: usize,
@@ -13,19 +15,16 @@ pub struct Pixel {
 }
 
 #[derive(Clone,Debug)]
+#[pyclass]
 pub struct Image {
     pub data: Vec<f64>,
-    pub shift: Option<Vec2D>,
-    pub shape: Vec<usize>, // numpy style
+    pub shift: Vec2D,
+    pub shape: [usize;2], // numpy style
 }
 
 impl std::fmt::Display for Image {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "shape: {:?}", self.shape)?;
-        if let Some(shift) = &self.shift {
-            write!(f, ", xshift {:0.4}, yshift {:0.4}", shift.x, shift.y)?
-        }
-        Ok(())
+        write!(f, ", xshift {:0.4}, yshift {:0.4}", self.shift.x, self.shift.y)
     }
 }
 
@@ -37,16 +36,16 @@ impl Image {
                 Some(HeaderValue::IntegerNumber(2)) => (),
                 _ => return Err(MavDACError::InvalidFITS("expected NAXIS==2".to_string())),
             };
-            let mut shape: Vec<usize> = vec![];
+            let mut shape: [usize;2] = [0,0];
             match hdu.value("NAXIS2")  {
                 Some(HeaderValue::IntegerNumber(x)) if *x > 0 => {
-                    shape.push(*x as usize);
+                    shape[0] = *x as usize;
                 },
                 _ => return Err(MavDACError::InvalidFITS("invalid NAXIS2".to_string())),
             }
             match hdu.value("NAXIS1")  {
                 Some(HeaderValue::IntegerNumber(x)) if *x > 0 => {
-                    shape.push(*x as usize);
+                    shape[1] = *x as usize;
                 },
                 _ => return Err(MavDACError::InvalidFITS("invalid NAXIS1".to_string())),
             };
@@ -71,10 +70,10 @@ impl Image {
                                 must be float or int\n{}", filename.display())
                     ))
                 };
-                Some(Vec2D {
+                Vec2D {
                     x: xshift,
                     y: yshift,
-                })
+                }
             };
             let data: Vec<f64> = match hdu.read_data() {
                 FitsData::IntegersI32(array) => {
@@ -112,7 +111,7 @@ impl Image {
     
     pub fn draw_on_circles(mut self, grid: &Grid, rad: f64, val: f64) -> Self {
         const NTHETA: usize = 1000;
-        grid.all_points(&self)
+        grid.all_points(self.shape[1], self.shape[0])
         .into_iter()
         .flat_map(|v| {
             (0..1000).map(|i| i as f64 / NTHETA as f64)
@@ -129,27 +128,24 @@ impl Image {
 
     pub fn cogs(&self, grid: &Grid, rad: usize) -> Vec<Centroid> {
         // get all nominal positions
-        let points = grid.all_points(&self);
+        let points = grid.all_points(self.shape[1], self.shape[0]);
 
         // measure cog and intensity within radius at all points
-        points.into_iter().map(|point| (point.clone(), self.get_blob(&point, rad)))
-        .map(|(point,pixels)|
-            (
-                point,
-                pixels.iter()
-                .map(|pixel| (
-                    pixel.x as f64*pixel.val,
-                    pixel.y as f64*pixel.val,
-                    pixel.val
-                )).fold((0.0,0.0,0.0), |a,b| (a.0+b.0, a.1+b.1, a.2+b.2))
-            )
-        ).map(|(point, (sumx,sumy,flux))| Centroid {
-            cogx: sumx / flux,
-            cogy: sumy / flux,
+        points.into_iter().map(|point| self.cog(&point, rad)).collect()
+    }
+
+    pub fn cog(&self, point: &Vec2D, rad: usize) -> Centroid {
+        let (sumx,sumy,flux) = self.get_blob(&point.clone(), rad).into_iter()
+        .map(|pixel| (
+            pixel.x as f64*pixel.val,
+            pixel.y as f64*pixel.val,
+            pixel.val
+        )).fold((0.0,0.0,0.0), |a,b| (a.0+b.0, a.1+b.1, a.2+b.2));
+        Centroid {
+            cog: Vec2D{x: sumx / flux, y: sumy /flux},
             flux,
-            x: point.x,
-            y: point.y,
-        }).collect()
+            pos: Vec2D{x: point.x, y: point.y},
+        }
     }
 
     fn get_blob(&self, pos: &Vec2D, rad: usize) -> Vec<Pixel> {
@@ -179,6 +175,7 @@ impl Image {
 }
 
 #[derive(Debug,Clone)]
+#[pyclass]
 pub struct Coordinate {
     pub pos: Vec2D,
     pub dist: Option<Vec2D>,

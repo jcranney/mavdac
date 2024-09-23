@@ -1,5 +1,6 @@
 use ndarray::Array2;
 use ndarray_inverse::Inverse;
+use pyo3::pyclass;
 
 use crate::MavDACError;
 use crate::Vec2D;
@@ -27,8 +28,8 @@ pub trait DistortionBasis {
         let mut b: Vec<Vec<f64>> = vec![];
         for cog in &cogs {
             b.push(vec![
-                cog.cogx - cog.x,
-                cog.cogy - cog.y,
+                cog.cog.x - cog.pos.x,
+                cog.cog.y - cog.pos.y,
             ]);
         }
         let b_matrix: Array2<f64> = Array2::from_shape_vec(
@@ -42,8 +43,8 @@ pub trait DistortionBasis {
                 (0..self.get_coeffs().len()).map(|index|
                     self.sample(
                         &Vec2D {
-                            x: cog.x,
-                            y: cog.y,
+                            x: cog.pos.x,
+                            y: cog.pos.y,
                         },
                         index
                     )
@@ -74,16 +75,19 @@ pub trait DistortionBasis {
     }
 }
 
+#[pyclass]
 pub struct BiVarPolyDistortions{
     pub degree: usize,
     pub coeffs: Vec<Vec2D>,
+    pub shape: [usize; 2],
 }
 
 impl BiVarPolyDistortions {
-    pub fn new(degree: usize) -> Self {
+    pub fn new(degree: usize, shape: [usize; 2]) -> Self {
         Self {
             degree,
             coeffs: vec![Vec2D{x:0.0,y:0.0}; ((degree+1)*(degree+2))/2],
+            shape,
         }
     }
 }
@@ -92,11 +96,12 @@ impl DistortionBasis for BiVarPolyDistortions {
     fn sample(&self, pos: &Vec2D, index: usize) -> f64 {
         let n = ((-1.0 + (1.0+8.0*(index as f64)).sqrt())/2.0).floor() as usize;
         let k = index - n*(n+1)/2;
-        let mut pos = pos.clone();
-        pos += Vec2D{x:-2048.0, y:-2048.0};
-        pos.x /= 2048.0;
-        pos.y /= 2048.0;
-        pos.x.powf(k as f64)*pos.y.powf((n-k) as f64)
+        let Vec2D{mut x, mut y} = pos;
+        x -= (self.shape[1] as f64)/2.0;
+        y -= (self.shape[0] as f64)/2.0;
+        x /= self.shape[1] as f64;
+        y /= self.shape[0] as f64;
+        x.powf(k as f64)*y.powf((n-k) as f64)
     }
     
     fn get_coeffs(&self) -> &Vec<Vec2D> {
