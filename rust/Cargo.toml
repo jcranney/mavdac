@@ -17,3 +17,5 @@ ndarray-inverse = "0.1.9"
 pyo3 = "0.22.0"
 rayon = "1.10.0"
 rustfft = "6.2.0"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_yaml = "0.9.34"

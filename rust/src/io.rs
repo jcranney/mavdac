@@ -1,10 +1,23 @@
-use std::{f64::consts::PI, path::{Path, PathBuf}};
+use std::{f64::consts::PI, fmt::Display, io::Write, path::{Path, PathBuf}};
 
 use fitrs::{Fits, FitsData, Hdu, HeaderValue};
 use pyo3::pyclass;
 
 use crate::{Centroid, Grid, MavDACError, Result, Vec2D};
+use serde_yaml;
 
+impl Grid {
+    pub fn from_yaml(filename: &str) -> Result<Grid> {
+        let f = std::fs::File::open(filename)?;
+        let grid: Grid = serde_yaml::from_reader(f)?;
+        Ok(grid)
+    }
+    pub fn to_yaml(&self, filename: &str) -> Result<()> {
+        let mut f = std::fs::File::create(filename)?;
+        write!(f,"{}",serde_yaml::to_string(&self)?)?;
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone)]
 #[pyclass]
@@ -181,9 +194,8 @@ pub struct Coordinate {
     pub dist: Option<Vec2D>,
 }
 
-impl Coordinate {
-    pub fn from_str(s: &str) -> Result<Self> {
-        println!("{}", s);
+impl TryFrom<&str> for Coordinate {
+    fn try_from(s: &str) -> std::result::Result<Self, Self::Error> {
         let mut split = s.split(',');
         let x: f64;
         let y: f64;
@@ -217,5 +229,17 @@ impl Coordinate {
                 dist: None,
             }
         )
+    }
+    
+    type Error = MavDACError;
+}
+
+impl Display for Coordinate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},{},", self.pos.x, self.pos.y)?;
+        if let Some(dist) = self.dist {
+            write!(f, "{},{},", dist.x, dist.y)?;
+        }
+        Ok(())
     }
 }

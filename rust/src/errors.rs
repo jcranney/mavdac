@@ -11,6 +11,7 @@ pub enum MavDACError {
     InvalidFITS(String),
     LinalgError(String),
     Coordinate(String),
+    YAMLError(serde_yaml::Error),
 }
 
 impl fmt::Display for MavDACError {
@@ -18,10 +19,11 @@ impl fmt::Display for MavDACError {
         match self {
             MavDACError::BadPattern(..) => write!(f, "bad input pattern"),
             MavDACError::UnreadablePath(..) => write!(f, "unreadable path"),
-            MavDACError::IOError(e) => write!(f, "{}", e.to_string()),
+            MavDACError::IOError(e) => write!(f, "{}", e),
             MavDACError::InvalidFITS(s) => write!(f, "{}", s),
-            MavDACError::LinalgError(e) => write!(f, "{}", e.to_string()),
+            MavDACError::LinalgError(e) => write!(f, "{}", e),
             MavDACError::Coordinate(s) => write!(f, "{}", s),
+            MavDACError::YAMLError(e) => write!(f, "{}", e),
         }
     }
 }
@@ -35,6 +37,7 @@ impl std::error::Error for MavDACError {
             MavDACError::InvalidFITS(_) => Some(self),
             MavDACError::LinalgError(_) => Some(self),
             MavDACError::Coordinate(_) => Some(self),
+            MavDACError::YAMLError(err) => Some(err),
         }
     }
 }
@@ -66,6 +69,13 @@ impl From<MavDACError> for PyErr {
             MavDACError::InvalidFITS(s) => PyValueError::new_err(s),
             MavDACError::LinalgError(s) => PyValueError::new_err(s),
             MavDACError::Coordinate(s) => PyValueError::new_err(s),
+            MavDACError::YAMLError(error) => PyValueError::new_err(error.to_string()),
         }
+    }
+}
+
+impl From<serde_yaml::Error> for MavDACError {
+    fn from(value: serde_yaml::Error) -> Self {
+        MavDACError::YAMLError(value)
     }
 }

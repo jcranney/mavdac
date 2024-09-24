@@ -1,28 +1,19 @@
 use basis::{BiVarPolyDistortions, DistortionBasis};
 use pyo3::prelude::*;
 use core::f64;
-use std::fmt::Debug;
-use glob;
 use rayon::prelude::*;
-use std::ops::{Add, AddAssign, Mul, Sub};
-use rustfft::num_complex::ComplexFloat;
 
 mod errors;
 pub mod basis;
 pub mod io;
+pub mod geom;
 pub use crate::io::{Image, Coordinate};
 pub use crate::errors::{MavDACError, Result};
-
-/// Formats the sum of two numbers as string.
-#[pyfunction]
-fn sum_as_string(a: usize, b: usize) -> PyResult<String> {
-    Ok((a + b).to_string())
-}
+pub use crate::geom::{Centroid,Vec2D,Grid};
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn mavdac(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(sum_as_string, m)?)?;
     m.add_function(wrap_pyfunction!(cli_main, m)?)?;
     m.add_function(wrap_pyfunction!(get_coordinates, m)?)?;
     m.add_function(wrap_pyfunction!(load_images, m)?)?;
@@ -47,9 +38,9 @@ fn cli_main(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
         None => None,
     };
 
-    println!("loading images");
+    eprintln!("loading images");
     let images = load_images(pattern)?;
-    let shape = images[0].shape.clone();
+    let shape = images[0].shape;
 
     let grid = Grid::Hex {
         pitch: 1.0/7.5e-3,
@@ -93,24 +84,55 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
         None => None,
     };
 
-    println!("loading images");
+    eprintln!("loading images");
     let images = load_images(pattern)?;
-    let shape = images[0].shape.clone();
-        
-    let grid = Grid::Hex {
-        pitch: 1.0/7.5e-3,
-        rotation: 0.0,
-        offset: Vec2D{x:0.0, y:0.0},
+    let shape = images[0].shape;
+
+    
+    // check if grid.yaml exists
+    let grid = match Grid::from_yaml("grid.yaml") {
+        Ok(grid) => grid,
+        Err(MavDACError::YAMLError(e)) => {
+            // file is badly formatted
+            // exit with error:
+            return Err(PyErr::from(MavDACError::YAMLError(e)));
+        },
+        Err(MavDACError::IOError(e)) => {
+            match e.kind() {
+                std::io::ErrorKind::NotFound => (),
+                _ => {
+                    eprintln!("{}", e);
+                    return Err(MavDACError::IOError(e).into())
+                },
+            }
+            // file doesn't exist, create one with defaults:
+            let grid = Grid::Hex {
+                pitch: 1.0/7.5e-3,
+                rotation: 0.0,
+                offset: Vec2D{x:0.0, y:0.0},
+            };
+            grid.to_yaml("grid.yaml")?;
+            grid
+        },
+        Err(e) => {return Err(e.into());},
     };
+
 
     // do centroids for base set of pinholes over all exposures, then filter out
     // any that are lower than FLUXTHRESH in any exposure
-    const RAD: usize = 50;
+    const RAD: usize = 90;
+
+    // create sample image to see if fit is good
+    images[0].clone()
+    .draw_on_circles(&(grid+images[0].shift), RAD as f64, 30_000.0)
+    .to_fits("sample.fits")?;
+    eprintln!("? check sample.fits to verify grid alignment\n? modify grid.yaml if not");
+    
     let pinholes = grid.all_points(images[0].shape[1], images[0].shape[0]);
     // cogs should be a n_pinholes x n_images 
     let cogs: Vec<Option<Vec<Centroid>>> = pinholes.iter().map(|pinhole|
         images.iter().map(|image|
-            image.cog(&(pinhole.clone()+image.shift), RAD)
+            image.cog(&(*pinhole+image.shift), RAD)
         ).collect::<Vec<Centroid>>()
     ).map(|pinhole_cogs|
         if pinhole_cogs.iter().all(|cog|
@@ -137,20 +159,20 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
             mean_pinhole_position.y /= images.len() as f64;
             for (j, image) in images.iter().enumerate() {
                 let mut cleaned_cog = pinhole_cogs[j].clone();
-                cleaned_cog.pos = mean_pinhole_position.clone() + image.shift;
+                cleaned_cog.pos = mean_pinhole_position + image.shift;
                 cleaned_cogs.push(cleaned_cog);
             }
         }
     }
  
     eprintln!("solving for distortions");
-    let distortions = solve_distortions(cleaned_cogs, 3, shape)?;
+    let distortions = solve_distortions(cleaned_cogs, 7, shape)?;
 
     match coords {
         Some(mut coords) => {
             for coord in &mut coords {
                 coord.dist = Some(distortions.eval(&coord.pos));
-                println!("{:?}", coord);
+                println!("{}", coord);
             }
         },
         None => {
@@ -159,7 +181,6 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
             }
         },
     }
-    
     Ok(())
 }
 
@@ -168,8 +189,8 @@ fn get_coordinates(filename: &str) -> PyResult<Vec<Coordinate>> {
     let contents = std::fs::read_to_string(filename)?;
     let mut coords: Vec<Coordinate> = vec![];
     for line in contents.split('\n') {
-        if line.len() > 0 {
-            coords.push(Coordinate::from_str(line)?);
+        if !line.is_empty() {
+            coords.push(Coordinate::try_from(line)?);
         }
     }
     Ok(coords)
@@ -177,7 +198,7 @@ fn get_coordinates(filename: &str) -> PyResult<Vec<Coordinate>> {
 
 #[pyfunction]
 fn load_images(pattern: &str) -> Result<Vec<Image>> {
-    glob::glob(&pattern)?.into_iter()
+    glob::glob(pattern)?
     .map(|path| Image::from_fits(path?))
     .collect::<Result<Vec<Image>>>()
 }
@@ -206,117 +227,3 @@ fn solve_distortions(cogs: Vec<Centroid>, degree: usize, shape: [usize;2]) -> Py
     Ok(distortions)
 }
 
-
-#[derive(Clone,Debug,Copy)]
-#[pyclass]
-pub struct Vec2D {
-    pub x: f64,
-    pub y: f64,
-}
-
-impl AddAssign for Vec2D {
-    fn add_assign(&mut self, rhs: Self) {
-        self.x += rhs.x;
-        self.y += rhs.y;
-    }
-}
-impl Add for Vec2D {
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x + rhs.x,
-            y: self.y + rhs.y,
-        }
-    }
-    type Output = Self;
-}
-impl Sub for Vec2D {
-    fn sub(self, rhs: Self) -> Self::Output {
-        Self {
-            x: self.x - rhs.x,
-            y: self.y - rhs.y,
-        }
-    }
-    type Output = Self;
-}
-
-impl Mul<f64> for Vec2D {
-    fn mul(self, rhs: f64) -> Self::Output {
-        Self {
-            x: self.x * rhs,
-            y: self.y * rhs,
-        }
-    }
-    type Output = Self;
-}
-
-
-#[pyclass]
-#[derive(Clone,Copy,Debug)]
-pub enum Grid {
-    Hex {
-        pitch: f64,  // pixels
-        rotation: f64,  // radians
-        offset: Vec2D,  // pixels
-    },
-}
-
-impl AddAssign<Vec2D> for Grid {
-    fn add_assign(&mut self, rhs: Vec2D) {
-        match self {
-            Grid::Hex { offset , ..} =>  {
-                *offset += rhs;
-            },
-        }
-    }
-}
-impl Add<Vec2D> for Grid {
-    fn add(self, rhs: Vec2D) -> Self::Output {
-        match self {
-            Grid::Hex { pitch, rotation, offset } => 
-                Grid::Hex { pitch, rotation, offset: offset + rhs },
-        }   
-    }
-    type Output = Self;
-}
-
-impl Grid {
-    pub fn all_points(&self, width: usize, height: usize) -> Vec<Vec2D> {
-        let max_rad = width.max(height)*2;
-        match self {
-            Grid::Hex { pitch, rotation, offset } => {
-                // first make a square grid with way too many points
-                (0..2*max_rad).map(|x| x as f64)
-                .flat_map(|x| (0..2*max_rad)
-                    // shift it to be centered at origin
-                    .map(|y| y as f64).map(move |y|
-                        (x - max_rad as f64,y - max_rad as f64)
-                    )
-                )
-                // scale it to pixel units
-                .map(|(x,y)| (x*pitch, y*pitch))
-                // then map it to a hex grid with gaps
-                .map(|(x,y)| (x+0.5*y,y*(3.0).sqrt()/2.0))
-                // rotate
-                .map(|(x,y)| (
-                    x*rotation.cos()-y*rotation.sin(),
-                    x*rotation.sin()+y*rotation.cos(),
-                ))
-                // now apply the offset:
-                .map(|(x,y)| (x+offset.x, y+offset.y))
-                // shift back to valid pixel range
-                .map(|(x,y)| (x + (width/2) as f64 - 0.5, y + (height/2) as f64 - 0.5))
-                .filter(|(x,y)| *x >= 0.0 && *x < width as f64 && *y >= 0.0 && *y < height as f64)
-                .map(|(x,y)| Vec2D{x,y})
-                .collect()
-            },
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-#[pyclass]
-pub struct Centroid {
-    pub cog: Vec2D,
-    pub flux: f64,
-    pub pos: Vec2D,
-}

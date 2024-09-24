@@ -19,7 +19,7 @@ pub trait DistortionBasis {
     fn eval(&self, pos: &Vec2D) -> Vec2D {
         (0..self.get_coeffs().len()).map(|index|
             {
-                self.get_coeffs()[index].clone() * self.sample(pos, index)
+                self.get_coeffs()[index] * self.sample(pos, index)
             }
         ).fold(Vec2D{x:0.0,y:0.0}, |a,b| a+b)
     }
