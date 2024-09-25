@@ -1,4 +1,4 @@
-# MAVDAC
+# mavdac
 MAVIS Differential Astrometric Calibration.
 
 # Install
@@ -106,3 +106,18 @@ positional arguments:
 options:
   -h, --help   show this help message and exit
 ```
+
+
+# Validating mavdac
+## Unit tests
+Unit tests for the rust package will be found within each rust module, e.g., within `./rust/src/lib.rs`, under `mod tests {...}`.
+
+## System tests
+System tests for the rust + python package (e.g., the CLI), can be found in `./src/tests`. These will include tests that generate images with known distortions that are piped through mavdac, and the measured distortion field can be checked for quality.
+
+## Hardware tests
+The final validation of this software package is through it's use on data acquired in a real optical system with introduced distortions. To demonstrate the challenges associated with this kind of validation - try to construct an experiment which can verify that the software works as intended. The following are the most direct:
+- **measurement of known distortion**: By injecting a known distortion source into the optical path of a simple imaging system, one can estimate the level of distortion introduced by this optic, and compare it to the truth. The challenge here is finding some optical component that introduces a known distortion with some high level of absolute precision.
+- **measurement of known calibration source**: By using a highly calibrated pinhole mask at the entrance of the optical system, one can perform a classical distortion calibration, measuring the observed spots and taking their offset as the "true distortion", then compare this with the recovered distortion using the differential calibration method. The challenge here is finding a calibration source which is accurate and stable down to 10s of nanometres. It is worth noting that the calibration object does not need to be the full pinhole grid, but could be a smaller set of sources with precise relative positioning that are moved around the field through different exposures.
+
+The third and most flexible method we considered allows the use of an **unknown distortion** with an **unknown calibration source** - that is, a calibration source with some unknown pinhole position errors, then to characterise the distortions with this mask. This will allow us to estimate the true positions of the pinholes (assuming that the mavdac pipeline works well). Then, we can insert the pinhole mask in a different orientation (e.g., rotated by 180 degrees), and measure the observed pinhole positions. These new pinhole positions should be the original estimated pinhole positions with distortion removed, rotated by 180 degress, plus the recovered distortion evaluated at the new pinhole positions. This should first be done without a strong distortion in the system, and then repeated with stronger distortions to assess the practical limitations of this method.
