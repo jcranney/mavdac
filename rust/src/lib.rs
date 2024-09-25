@@ -120,7 +120,7 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
 
     // do centroids for base set of pinholes over all exposures, then filter out
     // any that are lower than FLUXTHRESH in any exposure
-    const RAD: usize = 90;
+    const RAD: usize = 30;
 
     // create sample image to see if fit is good
     images[0].clone()
@@ -144,10 +144,12 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
         }
     ).collect();
 
+
     // calculate mean position of each pinhole over all exposures, and use this
     // to calculate residual distortion after pinhole position is corrected for.
     // this should give trivial distortion estimations if there is only one
     // exposure.
+    eprintln!("raw cogs: {}", pinholes.len());
     let mut cleaned_cogs: Vec<Centroid> = vec![];
     for (i, _pinhole) in pinholes.iter().enumerate() {
         if let Some(pinhole_cogs) = &cogs[i] {
@@ -164,9 +166,9 @@ fn cli_diff(pattern: &str, coordinates: Option<&str>) -> PyResult<()> {
             }
         }
     }
- 
+    eprintln!("cleaned cogs: {}", cleaned_cogs.len());
     eprintln!("solving for distortions");
-    let distortions = solve_distortions(cleaned_cogs, 7, shape)?;
+    let distortions = solve_distortions(cleaned_cogs, 2, shape)?;
 
     match coords {
         Some(mut coords) => {
