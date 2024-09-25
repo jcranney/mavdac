@@ -2,7 +2,9 @@ import argparse
 import mavdac
 
 parser = argparse.ArgumentParser(
-    "process mavis differential astrometric calibrations"
+    "mavis differential astrometric calibrator",
+    usage="\n  mavdac <pattern> [coordinates]",
+    description="For more info, see https://github.com/jcranney/mavdac"
 )
 parser.add_argument(
     "pattern", type=str,
@@ -13,6 +15,5 @@ parser.add_argument(
     help="file containing coordinates to map through distortions",
 )
 
-if __name__ == "__main__":
-    args = parser.parse_args()
-    mavdac.cli_diff(args.pattern, args.coordinates)
+args = parser.parse_args()
+mavdac.cli_diff(args.pattern, args.coordinates)
