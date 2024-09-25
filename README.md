@@ -11,7 +11,22 @@ maturin develop --release
 ```
 If successful, you should now be able to run `mavdac` as per [Usage](#usage)
 
+# Quickstart
+The simplest usage of this software is by calling
+```bash
+mavdac "./some/pattern*.fits"
+```
+which tries to parse all images on disk matching the glob pattern argument, and prints the distortion basis-function coefficients to stdout. These are not very useful on their own, so a user can also provide a set of coordinates to evaluate the distortion functions:
+```bash
+mavdac "./some/pattern*.fits" ./coordinates.txt
+```
+In this case, `mavdac` prints the sampled distortion function values to stdout, which the user can (e.g.) cat to some output file:
+```bash
+mavdac "./some/pattern*.fits" ./coordinates.txt > output.txt
+```
+
 # Usage
+
 There are a few ways to use `mavdac`, e.g.,:
  - Through the Python CLI,
  - As a Python module (part of another python-based application),
