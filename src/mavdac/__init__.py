@@ -1,4 +1,5 @@
 from .mavdac import *
+from .util import coeffs_from_cogs, run_mavdac
 
 
 __doc__ = mavdac.__doc__

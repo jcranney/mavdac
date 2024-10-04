@@ -24,17 +24,12 @@ import numpy as np
 import tempfile
 import os
 import subprocess
+from mavdac import run_mavdac
 
 
-def dist_true(pos: np.ndarray) -> np.ndarray:
-    """sample the true distortion function deterministically at points in
-    the field"""
-    dists = np.zeros_like(pos)
-    dists[:, 0] = 1*((pos[:, 0] - 2000.0)/4000)**2
-    return dists
-
-
-def generate_image(shift_x: float, shift_y: float) -> fits.hdu.PrimaryHDU:
+def generate_image(
+    shift_x: float, shift_y: float, dist_pixels: callable
+) -> fits.hdu.PrimaryHDU:
     """generate an image of the calibration source with some shift in x and y,
     returning a formatted fits.FitsHDU"""
 
@@ -51,18 +46,18 @@ def generate_image(shift_x: float, shift_y: float) -> fits.hdu.PrimaryHDU:
         cov_mat: np.ndarray = None
 
     # create hex grid:
-    pitch = 1.0
-    width = 30.0
-    overfill = 2.0
+    pitch = 6.0
+    width = 15.0
+    overfill = 4.0
     xx, yy = np.meshgrid(
-        np.arange(overfill*width/pitch),
-        np.arange(overfill*width/pitch),
+        pitch*np.arange(overfill*width/pitch),
+        pitch*np.arange(overfill*width/pitch),
         indexing="xy",
     )
     xx = xx.flatten()
     yy = yy.flatten()
-    xx -= overfill*width/pitch/2
-    yy -= overfill*width/pitch/2
+    xx -= overfill*width/2
+    yy -= overfill*width/2
     p = np.concatenate([xx[None, :], yy[None, :]], axis=0)
     transform = np.array([
         [1.0, 0.5],
@@ -74,16 +69,19 @@ def generate_image(shift_x: float, shift_y: float) -> fits.hdu.PrimaryHDU:
     p_pixels = (p + 30/2)*4000/30
     # add pinhole position error with 1 pixel of standard deviation:
     np.random.seed(1234)
-    p_pixels = p_pixels + np.random.randn(*p_pixels.shape)
+    p_pixels = p_pixels + 1.0*np.random.randn(*p_pixels.shape)
     xx_pixels, yy_pixels = p_pixels
     xx_pixels += shift_x
     yy_pixels += shift_y
     # sample the true distortion at the actual positions of the pinholes after
     # shifting:
-    dist_pixels = dist_true(np.array([xx_pixels, yy_pixels]).T)
-
-    xx_pixels += dist_pixels[:, 0]
-    yy_pixels += dist_pixels[:, 1]
+    xx_pixels -= 0.5
+    yy_pixels -= 0.5
+    d_pixels = dist_pixels(np.array([xx_pixels, yy_pixels]).T)
+    xx_pixels += d_pixels[:, 0]
+    yy_pixels += d_pixels[:, 1]
+    xx_pixels += 0.5
+    yy_pixels += 0.5
     xx = (xx_pixels * 30/4000)-30/2
     yy = (yy_pixels * 30/4000)-30/2
 
@@ -97,7 +95,7 @@ def generate_image(shift_x: float, shift_y: float) -> fits.hdu.PrimaryHDU:
     )
 
     imgen = mavisim.ImageGenerator(
-        10_000, source, psfs_file="./test_psf_gauss.fits", which_psf=0,
+        12_000, source, psfs_file="./test_psf_gauss.fits", which_psf=0,
     )
     imgen.main()
     im = imgen.get_rebinned_cropped(2, 30)
@@ -108,32 +106,26 @@ def generate_image(shift_x: float, shift_y: float) -> fits.hdu.PrimaryHDU:
     header = fits.Header()
     header["XSHIFT"] = shift_x
     header["YSHIFT"] = shift_y
-    return fits.hdu.PrimaryHDU(data=im, header=header)
-
-
-def run_mavdac(pattern: str, coordinate_file: str, distortion_file: str):
-    """run the mavdac pipeline for a list of coordinates, and return the list
-    of distortions evaluated at those coordinates"""
-    task = subprocess.run([
-        "mavdac",
-        pattern,
-        coordinate_file,
-    ], stdout=subprocess.PIPE)
-    with open(distortion_file, "w") as f:
-        f.write(task.stdout.decode())
+    return (
+        fits.hdu.PrimaryHDU(data=im, header=header),
+        np.array([xx_pixels, yy_pixels]).T
+    )
 
 
 def test_mavdac():
     """run the pipeline described in the docstring of this file"""
-    N_SAMPLES = 50  # number of unique points to evaluate the distortions
-    PIXELS: int = 4000  # number of pixels across detector
+    N_SAMPLES = 500  # number of unique points to evaluate the distortions
+    RADIUS: int = 1000
     # define evaluation points
-    p_eval = np.random.rand(N_SAMPLES, 2)*PIXELS
-    # sample true distortion function at evaluation points
-    d_true = dist_true(p_eval)
+    p_eval = (np.random.rand(N_SAMPLES, 2)*2-1)*RADIUS+2000
+    coeffs_true = np.array([
+        [1.0, 0.0],
+        [2.0, 0.0],
+        [3.0, 4.0],
+    ])
 
     SHIFT_RAD: float = 100.0  # pixels
-    NIMAGES: int = 4
+    NIMAGES: int = 3
     shifts = []
     for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
         shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
@@ -141,41 +133,53 @@ def test_mavdac():
     with tempfile.TemporaryDirectory() as d:
         # create images
         i = 0
+        expected_cogs = []
         for shift_x, shift_y in shifts:
-            hdu = generate_image(shift_x=shift_x, shift_y=shift_y)
+            hdu, cogs = generate_image(
+                shift_x=shift_x, shift_y=shift_y,
+                dist_pixels=lambda p: dist_eval(p, coeffs_true)
+            )
+            expected_cogs += list(cogs)
             hdu.writeto(os.path.join(d, f"img_{i:03d}.fits"))
             i += 1
-
+        subprocess.run([
+            "cp",
+            os.path.join(d, "img_000.fits"),
+            "."]
+        )
         # create coords
         coord_path = os.path.join(d, "coords.txt")
         with open(coord_path, "w") as f:
             for x, y in p_eval:
-                f.write(f"{x},{y},\n")
+                a = f"{x},{y},\n"
+                f.write(a)
 
         # run mavdac
         recov_path = os.path.join(d, "recov.txt")
-        run_mavdac(os.path.join(d, "img_*.fits"), coord_path, recov_path)
+        basis = run_mavdac(
+            os.path.join(d, "img_*.fits"), coord_path, recov_path
+        )
 
-        # read output
-        with open(recov_path) as f:
-            lines = f.readlines()
-        lines = [
-            [float(x) for x in line.split(",")[2:4]]
-            for line in lines if len(line) > 0
-        ]
-        d_reco = np.array(lines)
-
-    # compare d_true with d_reco
-    print(d_true)
-    print(d_reco)
-    print(d_true.std(axis=0))
-    print(d_reco.std(axis=0))
-    print((d_true - d_reco).std(axis=0))
-    return d_true, d_reco
+    # sample distortion function at evaluation points
+    d_true = dist_eval(p_eval, coeffs_true)
+    d_est = np.array([
+        basis.eval_xy(x, y)
+        for x, y in p_eval
+    ])
+    err = ((d_true - d_est).std(axis=0)**2).mean()
+    print(f"residual error: {err} pixels rms")
+    assert err < 1e-7
 
 
-d_true, d_reco = test_mavdac()
-d_true = d_true - d_true.mean(axis=0)
-d_reco = d_reco - d_reco.mean(axis=0)
-print(f"quality: "
-      f"{(((d_reco[:, 0] @ d_true[:, 0]) * (d_true.T @ d_true)[0, 0]**-1))}")
+def fun(x, y, ell):
+    return ((x - 2000.0)/4000)**(ell+1)
+
+
+def dist_eval(pos, coeffs):
+    dist = np.array([
+        np.array([[
+            fun(x, y, ell) * coeffs[ell, 0], fun(x, y, ell) * coeffs[ell, 1]
+        ] for ell in range(coeffs.shape[0])]).sum(axis=0)
+        for x, y in pos
+    ])
+    return dist

@@ -1,9 +1,10 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
 
-use pyo3::pyclass;
+use pyo3::{pyclass, pymethods};
 use rustfft::num_traits::Float;
 use serde::{Serialize,Deserialize};
 
+/// 2D vector, corresponding to float-valued pixel positions
 #[derive(Clone,Debug,Copy,Deserialize,PartialEq,Serialize)]
 #[pyclass]
 pub struct Vec2D {
@@ -46,12 +47,18 @@ impl Mul<f64> for Vec2D {
     type Output = Self;
 }
 
+/// Grid type, defined from minimal parameters but able to determine all possible
+/// pinhole positions.
 #[pyclass]
 #[derive(Clone,Copy,Debug,Serialize,Deserialize,PartialEq)]
 pub enum Grid {
+    /// Hexagonal grid, with a pinhole at the centre of the image by default
     Hex {
+        /// separation between adjacent pinholes (in pixels)
         pitch: f64,  // pixels
+        /// rotation of pinhole grid around centre of image (in radians)
         rotation: f64,  // radians
+        /// offset of pinhole grid (if {0,0} then there is a pinhole at the centre of the image)
         offset: Vec2D,  // pixels
     },
 }
@@ -76,6 +83,7 @@ impl Add<Vec2D> for Grid {
 }
 
 impl Grid {
+    /// determine all possible points of pinholes for a given grid
     pub fn all_points(&self, width: usize, height: usize) -> Vec<Vec2D> {
         let max_rad = width.max(height)*2;
         match self {
@@ -109,10 +117,40 @@ impl Grid {
     }
 }
 
+/// centroid type, to be populated by centroider
 #[derive(Debug, Clone)]
 #[pyclass]
 pub struct Centroid {
     pub cog: Vec2D,
     pub flux: f64,
     pub pos: Vec2D,
+}
+
+#[pymethods]
+impl Centroid {
+    /// measured centroid x coordinate
+    #[getter]
+    pub fn cogx(&self) -> f64 {
+        self.cog.x
+    }
+    /// measured centroid y coordinate
+    #[getter]
+    pub fn cogy(&self) -> f64 {
+        self.cog.y
+    }
+    /// nominal centroid x coordinate
+    #[getter]
+    pub fn posx(&self) -> f64 {
+        self.pos.x
+    }
+    /// nominal centroid y coordinate
+    #[getter]
+    pub fn posy(&self) -> f64 {
+        self.pos.y
+    }
+    /// flux of centroid (summed over all valid pixels)
+    #[getter]
+    pub fn flux(&self) -> f64 {
+        self.flux
+    }
 }

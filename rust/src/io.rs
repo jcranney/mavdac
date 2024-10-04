@@ -1,17 +1,20 @@
-use std::{f64::consts::PI, fmt::Display, io::Write, path::{Path, PathBuf}};
+use std::{f64::consts::PI, fmt::Display, io::Write};
 
 use fitrs::{Fits, FitsData, Hdu, HeaderValue};
-use pyo3::pyclass;
+use pyo3::{pyclass, pymethods};
 
 use crate::{Centroid, Grid, MavDACError, Result, Vec2D};
-use serde_yaml;
 
+#[pymethods]
 impl Grid {
+    /// load grid from yaml file
+    #[new]
     pub fn from_yaml(filename: &str) -> Result<Grid> {
         let f = std::fs::File::open(filename)?;
         let grid: Grid = serde_yaml::from_reader(f)?;
         Ok(grid)
     }
+    /// save grid to yaml file
     pub fn to_yaml(&self, filename: &str) -> Result<()> {
         let mut f = std::fs::File::create(filename)?;
         write!(f,"{}",serde_yaml::to_string(&self)?)?;
@@ -20,13 +23,13 @@ impl Grid {
 }
 
 #[derive(Debug, Clone)]
-#[pyclass]
-pub struct Pixel {
+struct Pixel {
     x: usize,
     y: usize,
     val: f64,
 }
 
+/// Image struct, with metadata corresponding to calibration
 #[derive(Clone,Debug)]
 #[pyclass]
 pub struct Image {
@@ -41,9 +44,13 @@ impl std::fmt::Display for Image {
     }
 }
 
+
+#[pymethods]
 impl Image {
-    pub fn from_fits(filename: PathBuf) -> Result<Image> {
-        let fits = Fits::open(&filename)?;
+    /// load image from fits file
+    #[new]
+    pub fn from_fits(filename: &str) -> Result<Image> {
+        let fits = Fits::open(filename)?;
         if let Some(hdu) = fits.get(0) {
             match hdu.value("NAXIS")  {
                 Some(HeaderValue::IntegerNumber(2)) => (),
@@ -64,23 +71,23 @@ impl Image {
             };
             let shift = {
                 let xshift: f64 = match hdu.value("XSHIFT").ok_or(MavDACError::InvalidFITS(
-                    format!("missing XSHIFT in fits header {}", filename.display())
+                    format!("missing XSHIFT in fits header {}", filename)
                 ))? {
                     HeaderValue::IntegerNumber(a) => *a as f64,
                     HeaderValue::RealFloatingNumber(a) => *a,
                     _ => return Err(MavDACError::InvalidFITS(
                         format!("XSHIFT in fits header has invalid datatype, \
-                                must be float or int {}", filename.display())
+                                must be float or int {}", filename)
                     ))
                 };
                 let yshift: f64 = match hdu.value("YSHIFT").ok_or(MavDACError::InvalidFITS(
-                    format!("missing YSHIFT in fits header {}", filename.display())
+                    format!("missing YSHIFT in fits header {}", filename)
                 ))? {
                     HeaderValue::IntegerNumber(a) => *a as f64,
                     HeaderValue::RealFloatingNumber(a) => *a,
                     _ => return Err(MavDACError::InvalidFITS(
                         format!("YSHIFT in fits header has invalid datatype, \
-                                must be float or int\n{}", filename.display())
+                                must be float or int\n{}", filename)
                     ))
                 };
                 Vec2D {
@@ -109,20 +116,22 @@ impl Image {
         } else {
             Err (
                 MavDACError::InvalidFITS(
-                    format!("no primary hdu in {}", &filename.display())
+                    format!("no primary hdu in {}", &filename)
                 )
             )
         }
     }
 
-    pub fn to_fits<P>(self, filename: P) -> Result<()> 
-    where P: AsRef<Path> {
-        let primary_hdu = Hdu::new(&self.shape, self.data);
+    /// save image to fits file
+    pub fn to_fits(&self, filename: &str) -> Result<()> 
+    {
+        let primary_hdu = Hdu::new(&self.shape, self.data.clone());
         Fits::create(filename, primary_hdu)?;
         Ok(())
     }
     
-    pub fn draw_on_circles(mut self, grid: &Grid, rad: f64, val: f64) -> Self {
+    /// draw circles around COG region defined by grid (e.g., for alignment)
+    pub fn draw_on_circles(&mut self, grid: &Grid, rad: f64, val: f64) {
         const NTHETA: usize = 1000;
         grid.all_points(self.shape[1], self.shape[0])
         .into_iter()
@@ -136,9 +145,9 @@ impl Image {
         .for_each(|(x,y)| {
             self.data[y*self.shape[1]+x] += val;
         });
-        self
     }
 
+    /// compute centroids for image given a grid and cog-radius
     pub fn cogs(&self, grid: &Grid, rad: usize) -> Vec<Centroid> {
         // get all nominal positions
         let points = grid.all_points(self.shape[1], self.shape[0]);
@@ -147,6 +156,7 @@ impl Image {
         points.into_iter().map(|point| self.cog(&point, rad)).collect()
     }
 
+    /// compute centroid for image given a point and cog-radius
     pub fn cog(&self, point: &Vec2D, rad: usize) -> Centroid {
         let (sumx,sumy,flux) = self.get_blob(&point.clone(), rad).into_iter()
         .map(|pixel| (
@@ -161,6 +171,14 @@ impl Image {
         }
     }
 
+    /// get shape of image
+    #[getter]
+    fn shape(&self) -> (usize,usize) {
+        self.shape.into()
+    }
+}
+
+impl Image {
     fn get_blob(&self, pos: &Vec2D, rad: usize) -> Vec<Pixel> {
         let rad = rad as isize;
         let mut pixels: Vec<Pixel> = vec![];
@@ -186,15 +204,26 @@ impl Image {
         pixels
     }
 }
+    
 
+/// coordinate struct for interfacing with coordinate files
 #[derive(Debug,Clone)]
 #[pyclass]
 pub struct Coordinate {
     pub pos: Vec2D,
-    pub dist: Option<Vec2D>,
+}
+
+#[pymethods]
+impl Coordinate {
+    /// get coordinate position
+    #[getter]
+    fn pos(&self) -> (f64, f64) {
+        (self.pos.x, self.pos.y)
+    }
 }
 
 impl TryFrom<&str> for Coordinate {
+    /// parse string into coordinate
     fn try_from(s: &str) -> std::result::Result<Self, Self::Error> {
         let mut split = s.split(',');
         let x: f64;
@@ -226,7 +255,6 @@ impl TryFrom<&str> for Coordinate {
         Ok(
             Self {
                 pos: Vec2D{x,y},
-                dist: None,
             }
         )
     }
@@ -237,9 +265,6 @@ impl TryFrom<&str> for Coordinate {
 impl Display for Coordinate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{},{},", self.pos.x, self.pos.y)?;
-        if let Some(dist) = self.dist {
-            write!(f, "{},{},", dist.x, dist.y)?;
-        }
         Ok(())
     }
 }

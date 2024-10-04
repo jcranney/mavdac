@@ -3,14 +3,20 @@ use std::fmt;
 use pyo3::{exceptions::PyValueError, PyErr};
 pub type Result<T> = std::result::Result<T, MavDACError>;
 
+/// error type for mavdac crate
 #[derive(Debug)]
 pub enum MavDACError {
+    /// bad search pattern for images
     BadPattern(glob::PatternError),
+    /// undreadable path (from glob)
     UnreadablePath(glob::GlobError),
+    /// io error wrapper
     IOError(std::io::Error),
+    /// fits image file is invalid
     InvalidFITS(String),
-    LinalgError(String),
+    /// invalid coordinate, e.g., out of bounds
     Coordinate(String),
+    /// yaml file error
     YAMLError(serde_yaml::Error),
 }
 
@@ -21,7 +27,6 @@ impl fmt::Display for MavDACError {
             MavDACError::UnreadablePath(..) => write!(f, "unreadable path"),
             MavDACError::IOError(e) => write!(f, "{}", e),
             MavDACError::InvalidFITS(s) => write!(f, "{}", s),
-            MavDACError::LinalgError(e) => write!(f, "{}", e),
             MavDACError::Coordinate(s) => write!(f, "{}", s),
             MavDACError::YAMLError(e) => write!(f, "{}", e),
         }
@@ -35,7 +40,6 @@ impl std::error::Error for MavDACError {
             MavDACError::UnreadablePath(err) => Some(err),
             MavDACError::IOError(err) => Some(err),
             MavDACError::InvalidFITS(_) => Some(self),
-            MavDACError::LinalgError(_) => Some(self),
             MavDACError::Coordinate(_) => Some(self),
             MavDACError::YAMLError(err) => Some(err),
         }
@@ -67,7 +71,6 @@ impl From<MavDACError> for PyErr {
             MavDACError::UnreadablePath(glob_error) => PyValueError::new_err(glob_error.to_string()),
             MavDACError::IOError(error) => PyValueError::new_err(error.to_string()),
             MavDACError::InvalidFITS(s) => PyValueError::new_err(s),
-            MavDACError::LinalgError(s) => PyValueError::new_err(s),
             MavDACError::Coordinate(s) => PyValueError::new_err(s),
             MavDACError::YAMLError(error) => PyValueError::new_err(error.to_string()),
         }
