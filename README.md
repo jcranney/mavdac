@@ -2,12 +2,8 @@
 MAVIS Differential Astrometric Calibration. This image processing pipeline is designed to ingest images acquired during astrometric calibration of (e.g.) [MAVIS](https://mavis-ao.org), and output the estimated distortion field derived from these images. The bulk of the pipeline is written in Rust, but the most useful functions and the CLI tool are wrapped in Python.
 
 # Install
-Eventually this will be pip installable, but for now, the easiest way to get going
-is through `maturin` (which is `pip install`able). Clone this repo then build it:
 ```bash
-git clone https://github.com/jcranney/mavdac
-cd mavdac
-maturin develop --release
+pip install mavdac
 ```
 If successful, you should now be able to run `mavdac` as per [Usage](#usage)
 
