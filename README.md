@@ -5,21 +5,42 @@ MAVIS Differential Astrometric Calibration. This image processing pipeline is de
 ```bash
 pip install mavdac
 ```
-If successful, you should now be able to run `mavdac` as per [Usage](#usage)
+To check that everything is set up correctly, test the CLI, e.g.,:
+```bash
+mavdac --help
+```
+You should see something like:
+```
+$ mavdac --help
+usage: mavdac [-h] [--radius RADIUS] [--thresh THRESH] [--grid GRID] [--yes] [--degree DEGREE] pattern [coordinates]
+
+mavis differential astrometric calibrator. For more info, see https://github.com/jcranney/mavdac
+
+positional arguments:
+  pattern          glob pattern for matching fits files to use for calibration
+  coordinates      file containing coordinates to map through distortions
+
+options:
+  -h, --help       show this help message and exit
+  --radius RADIUS  radius around nominal pinhole position to perform centroiding
+  --thresh THRESH  threshold of summed flux under which a centroid is ignored
+  --grid GRID      yaml file containing grid geometry definition, creates default if not present
+  --yes, -y        answer "Yes" by default (e.g., when using non-interactive shells)
+  --degree DEGREE  maximum order of bivariate polynomial used in distortion fitting
+```
+
 
 # Quickstart
 The simplest usage of this software is by calling
 ```bash
-mavdac "./some/pattern*.fits"
+mavdac "./some/pattern*.fits" ./coordinates.csv
 ```
-which tries to parse all images on disk matching the glob pattern argument, and prints the distortion basis-function coefficients to stdout. These are not very useful on their own, so a user can also provide a set of coordinates to evaluate the distortion functions:
+which tries to parse all images on disk matching the glob pattern argument, and the coordinates in the comma separated human-readable coordinates file. If the calibrations are succesful, then the recovered distortions will be sampled at the specified coordinates and printed to stdout. So, to capture the output, you can do (e.g.):
 ```bash
-mavdac "./some/pattern*.fits" ./coordinates.txt
+mavdac "./some/pattern*.fits" ./coordinates.csv > output.csv
 ```
-In this case, `mavdac` prints the sampled distortion function values to stdout, which the user can (e.g.) cat to some output file:
-```bash
-mavdac "./some/pattern*.fits" ./coordinates.txt > output.txt
-```
+
+
 
 # Usage
 
@@ -28,7 +49,7 @@ There are a few ways to use `mavdac`, e.g.,:
  - As a Python module (part of another python-based application),
  - As a Rust crate (part of another rust-based application),
 
-Here, I assume you are a standard user, hoping to perform astrometric calibration of an optical system using the MAVIS Differential Astrometric Calibration technique. In that case, the workflow is as follows:
+I'll assume you are a standard user, hoping to perform astrometric calibration of an optical system using the MAVIS Differential Astrometric Calibration technique. In that case, the workflow is as follows:
 
  1) **Collect images** of calibration source into `./some/dir/img_0*.fits`,
  2) **Define coordinates** in pixel space to evaluate the measured distortions, e.g., `./some/dir/coords`:
@@ -93,6 +114,8 @@ mavdac "./imgs_*.fits" ./coords > ./out
    - `pitch`: distance between adjacent pinholes (in pixel units),
    - `rotation`: orientation of hexagonal pinhole geometry (in radians),
    - `offset`: shift of overall grid in pixel units, in `x` and `y` dimensions. Note that for `x=0` and `y=0`, there is a point in the grid at the exact middle of the image.
+  
+  Note that if you specify a grid file that does not exist, you will be asked if you want the default one. If you're feeling lazy, just say yes and then modify the default one that gets created.
 
 ### 4) Running `mavdac`
 Finally, once you have:
@@ -103,19 +126,6 @@ Finally, once you have:
  you can run mavdac from the command line by:
 ```bash
 mavdac "./some/dir/*.fits" ./coords > ./out
-```
-For a reminder, you can check `mavdac --help`:
-mavis_acm/lab/inputs 
-```
-$ python -m mavdac --help
-usage: process mavis differential astrometric calibrations [-h] pattern [coordinates]
-
-positional arguments:
-  pattern      glob pattern for matching fits files to use for calibration
-  coordinates  file containing coordinates to map through distortions
-
-options:
-  -h, --help   show this help message and exit
 ```
 
 
@@ -129,7 +139,11 @@ All versions of mavdac < 1.0.0 are subject to breaking changes between any two r
 Unit tests for the rust package will be found within each rust module, e.g., within `./rust/src/lib.rs`, under `mod tests {...}`.
 
 ## System tests
-System tests for the rust + python package (e.g., the CLI), can be found in `./src/tests`. These will include tests that generate images with known distortions that are piped through mavdac, and the measured distortion field can be checked for quality.
+System tests for the rust + python package (e.g., the CLI), can be found in `./src/tests`. These will include tests that generate images with known distortions that are piped through mavdac, and the measured distortion field can be checked for quality. These are already quite mature, and can be tested in any version `>=0.1.1` by running
+```bash
+pytest
+```
+in the root directory of this repo.
 
 ## Hardware tests
 The final validation of this software package is through it's use on data acquired in a real optical system with introduced distortions. To demonstrate the challenges associated with this kind of validation - try to construct an experiment which can verify that the software works as intended. The following are the most direct:
