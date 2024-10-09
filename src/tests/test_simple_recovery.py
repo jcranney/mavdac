@@ -26,6 +26,9 @@ import os
 import subprocess
 from mavdac import run_mavdac
 
+psfs_file = "./src/tests/test_psf_gauss.fits"
+gridfile = "./src/tests/grid.yaml"
+
 
 def generate_image(
     shift_x: float, shift_y: float, dist_pixels: callable
@@ -95,7 +98,7 @@ def generate_image(
     )
 
     imgen = mavisim.ImageGenerator(
-        12_000, source, psfs_file="./test_psf_gauss.fits", which_psf=0,
+        12_000, source, psfs_file=psfs_file, which_psf=0,
     )
     imgen.main()
     im = imgen.get_rebinned_cropped(2, 30)
@@ -114,7 +117,7 @@ def generate_image(
 
 def test_mavdac():
     """run the pipeline described in the docstring of this file"""
-    N_SAMPLES = 500  # number of unique points to evaluate the distortions
+    N_SAMPLES = 100  # number of unique points to evaluate the distortions
     RADIUS: int = 1000
     # define evaluation points
     p_eval = (np.random.rand(N_SAMPLES, 2)*2-1)*RADIUS+2000
@@ -142,22 +145,9 @@ def test_mavdac():
             expected_cogs += list(cogs)
             hdu.writeto(os.path.join(d, f"img_{i:03d}.fits"))
             i += 1
-        subprocess.run([
-            "cp",
-            os.path.join(d, "img_000.fits"),
-            "."]
-        )
-        # create coords
-        coord_path = os.path.join(d, "coords.txt")
-        with open(coord_path, "w") as f:
-            for x, y in p_eval:
-                a = f"{x},{y},\n"
-                f.write(a)
-
-        # run mavdac
-        recov_path = os.path.join(d, "recov.txt")
         basis = run_mavdac(
-            os.path.join(d, "img_*.fits"), coord_path, recov_path
+            os.path.join(d, "img_*.fits"), rad=30, flux_thresh=10_000.0,
+            gridfile=gridfile, poly_degree=3,
         )
 
     # sample distortion function at evaluation points
@@ -166,9 +156,79 @@ def test_mavdac():
         basis.eval_xy(x, y)
         for x, y in p_eval
     ])
-    err = ((d_true - d_est).std(axis=0)**2).mean()
+    err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
     print(f"residual error: {err} pixels rms")
-    assert err < 1e-7
+    assert err < 1e-4
+
+
+def test_mavdac_cli():
+    """run the pipeline described in the docstring of this file"""
+    N_SAMPLES = 100  # number of unique points to evaluate the distortions
+    RADIUS: int = 1000
+    # define evaluation points
+    p_eval = (np.random.rand(N_SAMPLES, 2)*2-1)*RADIUS+2000
+    coeffs_true = np.array([
+        [1.0, 0.0],
+        [2.0, 0.0],
+        [3.0, 4.0],
+    ])
+
+    SHIFT_RAD: float = 100.0  # pixels
+    NIMAGES: int = 3
+    shifts = []
+    for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
+        shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
+
+    with tempfile.TemporaryDirectory() as d:
+        # create images
+        i = 0
+        expected_cogs = []
+        for shift_x, shift_y in shifts:
+            hdu, cogs = generate_image(
+                shift_x=shift_x, shift_y=shift_y,
+                dist_pixels=lambda p: dist_eval(p, coeffs_true)
+            )
+            expected_cogs += list(cogs)
+            hdu.writeto(os.path.join(d, f"img_{i:03d}.fits"))
+            i += 1
+
+        # create coords
+        coord_path = os.path.join(d, "coords.txt")
+        with open(coord_path, "w") as f:
+            for x, y in p_eval:
+                a = f"{x:},{y},\n"
+                f.write(a)
+
+        # run mavdac
+        recov_path = os.path.join(d, "recov.txt")
+        with open(recov_path, "w") as f:
+            subprocess.run([
+                "mavdac",
+                os.path.join(d, "img_*.fits"),
+                coord_path,
+                f"--grid={gridfile}",
+                "--radius=30",
+                "--thresh=10000",
+                "--degree=3",
+            ], stdout=f)
+        with open(recov_path, "r") as f:
+            recov_lines = f.readlines()
+        d_est = []
+        for line in recov_lines:
+            if len(line) > 0:
+                d_est.append(line.split(",")[2:4])
+        d_est = np.array(d_est, dtype=np.float64)
+
+    # sample distortion function at evaluation points
+    d_true = dist_eval(p_eval, coeffs_true)
+    d_true -= d_true.mean(axis=0)[None, :]
+    d_est -= d_est.mean(axis=0)[None, :]
+    err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
+    print(recov_lines)
+    print(d_true)
+    print(d_est)
+    print(f"residual error: {err} pixels rms")
+    assert err < 1e-4
 
 
 def fun(x, y, ell):

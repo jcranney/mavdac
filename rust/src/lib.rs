@@ -47,6 +47,7 @@ fn mavdac(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Centroid>()?;
     m.add_class::<BiVarPolyDistortions>()?;
     m.add_class::<Coordinate>()?;
+    m.add_class::<Vec2D>()?;
     Ok(())
 }
 

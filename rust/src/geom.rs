@@ -12,6 +12,14 @@ pub struct Vec2D {
     pub y: f64,
 }
 
+#[pymethods]
+impl Vec2D {
+    #[new]
+    fn new(x: f64, y: f64) -> Vec2D {
+        Vec2D{x, y}
+    }
+}
+
 impl AddAssign for Vec2D {
     fn add_assign(&mut self, rhs: Self) {
         self.x += rhs.x;

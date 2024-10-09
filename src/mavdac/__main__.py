@@ -1,6 +1,11 @@
 import argparse
 import mavdac
 import json
+import os
+import click
+import sys
+import glob
+import numpy
 
 parser = argparse.ArgumentParser(
     "mavdac",
@@ -28,7 +33,14 @@ parser.add_argument(
 )
 parser.add_argument(
     "--grid", type=str, default="grid.yaml",
-    help="yaml file containing grid geometry definition",
+    help=(
+        "yaml file containing grid geometry definition, "
+        "creates default if not present"
+    ),
+)
+parser.add_argument(
+    "--yes", "-y", action="count", default=0,
+    help="answer \"Yes\" by default (e.g., when using non-interactive shells)"
 )
 parser.add_argument(
     "--degree", type=int, default=5,
@@ -37,10 +49,42 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-basis = mavdac.run_mavdac(
-    args.pattern, rad=args.radius, flux_thresh=args.thresh,
-    gridfile=args.grid, poly_degree=args.degree
-)
+if len(glob.glob(args.pattern)) == 0:
+    print(
+        f"pattern does not match any files: {args.pattern}\naborting.",
+        file=sys.stderr,
+    )
+    exit(1)
+
+if not os.path.isfile(args.grid):
+    if args.yes == 0 and not click.confirm(
+        f"{args.grid} does not exist.\n"
+        "would you like to use the default one and proceed?", default=True,
+        err=True,
+    ):
+        print("aborting", file=sys.stderr)
+        exit(2)
+    mavdac.Grid.Hex(
+        pitch=100.0, rotation=0.0,
+        offset=mavdac.Vec2D(0.0, 0.0)
+    ).to_yaml(args.grid)
+
+try:
+    basis = mavdac.run_mavdac(
+        args.pattern, rad=args.radius, flux_thresh=args.thresh,
+        gridfile=args.grid, poly_degree=args.degree
+    )
+except numpy.linalg.LinAlgError:
+    print(
+        """error: singular matrix, not enough independent observations.
+try some of the following:
+    - using a more diverse set of XSHIFT/YSHIFT,
+    - using more pinholes (reduce the flux threshold),
+    - using a smaller degree polynomial basis,
+    - raising an issue at https://github.com/jcranney/mavdac/issues/new""",
+        file=sys.stderr,
+    )
+    exit(3)
 
 if args.coordinates:
     coordinates = mavdac.get_coordinates(args.coordinates)
