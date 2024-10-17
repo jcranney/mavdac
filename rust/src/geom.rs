@@ -1,8 +1,10 @@
 use std::ops::{Add, AddAssign, Mul, Sub};
+use std::io::Write;
 
 use pyo3::{pyclass, pymethods};
 use rustfft::num_traits::Float;
 use serde::{Serialize,Deserialize};
+use crate::Result;
 
 /// 2D vector, corresponding to float-valued pixel positions
 #[derive(Clone,Debug,Copy,Deserialize,PartialEq,Serialize)]
@@ -17,6 +19,14 @@ impl Vec2D {
     #[new]
     fn new(x: f64, y: f64) -> Vec2D {
         Vec2D{x, y}
+    }
+    #[getter]
+    fn x(&self) -> f64 {
+        self.x
+    }
+    #[getter]
+    fn y(&self) -> f64 {
+        self.y
     }
 }
 
@@ -71,15 +81,6 @@ pub enum Grid {
     },
 }
 
-impl AddAssign<Vec2D> for Grid {
-    fn add_assign(&mut self, rhs: Vec2D) {
-        match self {
-            Grid::Hex { offset , ..} =>  {
-                *offset += rhs;
-            },
-        }
-    }
-}
 impl Add<Vec2D> for Grid {
     fn add(self, rhs: Vec2D) -> Self::Output {
         match self {
@@ -90,7 +91,22 @@ impl Add<Vec2D> for Grid {
     type Output = Self;
 }
 
+
+#[pymethods]
 impl Grid {
+    /// load grid from yaml file
+    #[new]
+    pub fn from_yaml(filename: &str) -> Result<Grid> {
+        let f = std::fs::File::open(filename)?;
+        let grid: Grid = serde_yaml::from_reader(f)?;
+        Ok(grid)
+    }
+    /// save grid to yaml file
+    pub fn to_yaml(&self, filename: &str) -> Result<()> {
+        let mut f = std::fs::File::create(filename)?;
+        write!(f,"{}",serde_yaml::to_string(&self)?)?;
+        Ok(())
+    }
     /// determine all possible points of pinholes for a given grid
     pub fn all_points(&self, width: usize, height: usize) -> Vec<Vec2D> {
         let max_rad = width.max(height)*2;

@@ -13,6 +13,8 @@ def coeffs_from_cogs(cogs, basis_function: BiVarPolyDistortions):
     """
     fun = basis_function.sample_xy
     P = len(cogs)  # number of pinholes
+    if P == 0:
+        raise ValueError("no valid cogs, perhaps the threshold is too high?")
     N = len(cogs[0])  # number of shifts
     L = basis_function.ncoeffs  # number of polynomials
     R = 2  # number of dimensions
@@ -51,4 +53,6 @@ def run_mavdac(
     cogs = mavdac.measure_cogs(imgs, grid, rad, flux_thresh)
     basis = mavdac.BiVarPolyDistortions(poly_degree, im_shape)
     mavdac.coeffs_from_cogs(cogs, basis)
+    imgs[0].draw_on_circles(grid, rad, 500)
+    imgs[0].to_fits("/tmp/sample.fits")
     return basis

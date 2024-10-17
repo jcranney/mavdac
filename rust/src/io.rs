@@ -1,26 +1,10 @@
-use std::{f64::consts::PI, fmt::Display, io::Write};
+use std::{f64::consts::PI, fmt::Display};
 
 use fitrs::{Fits, FitsData, Hdu, HeaderValue};
 use pyo3::{pyclass, pymethods};
 
 use crate::{Centroid, Grid, MavDACError, Result, Vec2D};
 
-#[pymethods]
-impl Grid {
-    /// load grid from yaml file
-    #[new]
-    pub fn from_yaml(filename: &str) -> Result<Grid> {
-        let f = std::fs::File::open(filename)?;
-        let grid: Grid = serde_yaml::from_reader(f)?;
-        Ok(grid)
-    }
-    /// save grid to yaml file
-    pub fn to_yaml(&self, filename: &str) -> Result<()> {
-        let mut f = std::fs::File::create(filename)?;
-        write!(f,"{}",serde_yaml::to_string(&self)?)?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, Clone)]
 struct Pixel {
@@ -135,6 +119,7 @@ impl Image {
         const NTHETA: usize = 1000;
         grid.all_points(self.shape[1], self.shape[0])
         .into_iter()
+        .map(|v| v+self.shift)
         .flat_map(|v| {
             (0..1000).map(|i| i as f64 / NTHETA as f64)
             .map(|t| t*2.0*PI)
@@ -153,7 +138,7 @@ impl Image {
         let points = grid.all_points(self.shape[1], self.shape[0]);
 
         // measure cog and intensity within radius at all points
-        points.into_iter().map(|point| self.cog(&point, rad)).collect()
+        points.into_iter().map(|v| v+self.shift).map(|point| self.cog(&point, rad)).collect()
     }
 
     /// compute centroid for image given a point and cog-radius
