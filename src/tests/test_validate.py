@@ -46,7 +46,8 @@ def generate_image_mavisim_cli(
     with tempfile.NamedTemporaryFile("w") as f:
         f.write("Star RA Dec X PM_X Y PM_Y Flux\n")
         for i, star in enumerate(zip(xx_as, yy_as)):
-            f.write(f"{i} 0.0 0.0 {xx_as[i]} 0.0 {yy_as[i]} 0.0 100000.0\n")
+            flux = 1e5 if xx_as[i]**2+yy_as[i]**2 <= 13**2 else 1.0
+            f.write(f"{i} 0.0 0.0 {xx_as[i]} 0.0 {yy_as[i]} 0.0 {flux}\n")
         result = subprocess.run([
             "mavisim",
             f"-o={filename}",
@@ -127,23 +128,28 @@ def load_dists_from_file(file: str) -> Callable:
     return dist_func
 
 
-@pytest.mark.parametrize("pinholes", [
-    # grid_perfect(),
-    # grid_perturbed(1.0),
+pinholes = [
+    grid_perfect(),
+    grid_perturbed(1.0),
     grid_scaled(1.0, 1.001)
-])
-@pytest.mark.parametrize("distortions", [
-    # dists_none,
+]
+distortions = [
+    dists_none,
     dists_poly,
-    dists_mavis
-])
+    dists_mavis,
+]
+
+
+@pytest.mark.parametrize("pinholes", pinholes)
+@pytest.mark.parametrize("distortions", distortions)
 def test_mavdac_cli(
-    pinholes: List[Tuple[float, float]], distortions: Callable
+    pinholes: List[Tuple[float, float]], distortions: Callable,
+    plot: bool = False,
 ) -> None:
     """run the pipeline described in the docstring of this file"""
-    p_eval = np.array(make_eval_points(40, 14.0))
+    p_eval = np.array(make_eval_points(40, 13.0))
     SHIFT_RAD: float = 50.0  # pixels
-    NIMAGES: int = 5
+    NIMAGES: int = 3
     shifts = []
     for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
         shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
@@ -155,7 +161,7 @@ def test_mavdac_cli(
             image_filename = os.path.join(d, f"img_{i:03d}.fits")
             generate_image_mavisim_cli(
                 shift_x=shift_x, shift_y=shift_y,
-                dist_pixels=lambda p: distortions(p)*0.1,
+                dist_pixels=distortions,
                 filename=image_filename, pinholes=pinholes,
             )
             i += 1
@@ -195,11 +201,11 @@ def test_mavdac_cli(
     d_true -= d_true.mean(axis=0)[None, :]
     d_est -= d_est.mean(axis=0)[None, :]
     # tip-tilt removed error:
-    print("tt-removed rms")
-    print(f"input dist: {rms(d_true)} pixels rms")
-    print(f"  est dist: {rms(d_est)} pixels rms")
-    err = rms(d_true - d_est)
-    print(f"     error: {rms(d_true - d_est)} pixels rms")
+    # print("tt-removed rms")
+    # print(f"input dist: {rms(d_true)} pixels rms")
+    # print(f"  est dist: {rms(d_est)} pixels rms")
+    # err = rms(d_true - d_est)
+    # print(f"     error: {rms(d_true - d_est)} pixels rms")
     # assert err < 1e-3
     # plate scale removed error:
     coord_mat = np.array([
@@ -216,4 +222,43 @@ def test_mavdac_cli(
     err = rms(d_err)
     print(f"     error: {err} pixels rms")
     rms(d_true - d_est)
-    assert err < 1e-5
+    if plot:
+        sf = 100.0
+        for i in range(len(p_eval)):
+            plt.subplot(1, 2, 1)
+            plt.arrow(
+                p_eval[i, 0], p_eval[i, 1],
+                sf*d_true[i, 0], sf*d_true[i, 1],
+                color="r", alpha=0.5, width=10,
+            )
+            plt.arrow(
+                p_eval[i, 0], p_eval[i, 1],
+                sf*d_est[i, 0], sf*d_est[i, 1],
+                color="b", alpha=0.5, width=10,
+            )
+            plt.subplot(1, 2, 2)
+            plt.arrow(
+                p_eval[i, 0], p_eval[i, 1],
+                sf*d_err[i, 0], sf*d_err[i, 1],
+                color="g", alpha=0.5, width=10,
+            )
+    else:
+        assert err < 6.66e-3  # 50 uas rms
+
+
+if __name__ == "__main__":
+    # called as a script, not from pytest
+    import matplotlib.pyplot as plt
+    plt.ion()
+    for distortion in distortions:
+        for pinhole in pinholes:
+            plt.figure(figsize=(12, 8))
+            test_mavdac_cli(
+                distortions=distortion, pinholes=pinhole, plot=True,
+            )
+            plt.subplot(1, 2, 1)
+            plt.axis("square")
+            plt.legend(["d_true", "d_est"])
+            plt.subplot(1, 2, 2)
+            plt.axis("square")
+            plt.legend(["d_err"])

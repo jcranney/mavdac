@@ -18,20 +18,21 @@ quantity, and the comparison between truth and recovered distortions can be
 made, showing an error in the plate scale modes but otherwise sufficient
 accuracy.
 """
-from astropy.io import fits
-import mavisim
+from astropy.io import fits  # type: ignore
+import mavisim  # type: ignore
 import numpy as np
 import tempfile
 import os
 import subprocess
 from mavdac import run_mavdac
+from typing import Callable
 
 psfs_file = "./src/tests/test_psf_gauss.fits"
 gridfile = "./src/tests/grid.yaml"
 
 
 def generate_image(
-    shift_x: float, shift_y: float, dist_pixels: callable
+    shift_x: float, shift_y: float, dist_pixels: Callable
 ) -> fits.hdu.PrimaryHDU:
     """generate an image of the calibration source with some shift in x and y,
     returning a formatted fits.FitsHDU"""
@@ -40,13 +41,13 @@ def generate_image(
 
     class Source(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
-        exp_time: float = None  # exposure time in seconds to simulate.
-        star: np.ndarray = None  # unique ID of each star.
-        flux: np.ndarray = None  # flux of each star.
-        gauss_pos: np.ndarray = None  # X/Y-position of each star (in arcsec).
-        gauss_cov: np.ndarray = None  # covariance of Gaussian kernel
-        static_dist: np.ndarray = None  # static distortion to apply
-        cov_mat: np.ndarray = None
+        exp_time: float  # exposure time in seconds to simulate.
+        star: np.ndarray  # unique ID of each star.
+        flux: np.ndarray  # flux of each star.
+        gauss_pos: np.ndarray  # X/Y-position of each star (in arcsec).
+        gauss_cov: np.ndarray  # covariance of Gaussian kernel
+        static_dist: None = None  # static distortion to apply
+        cov_mat: None = None
 
     # create hex grid:
     pitch = 6.0
@@ -115,7 +116,7 @@ def generate_image(
     )
 
 
-def test_mavdac():
+def test_mavdac() -> None:
     """run the pipeline described in the docstring of this file"""
     N_SAMPLES = 100  # number of unique points to evaluate the distortions
     RADIUS: int = 1000
@@ -157,11 +158,10 @@ def test_mavdac():
         for x, y in p_eval
     ])
     err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
-    print(f"residual error: {err} pixels rms")
     assert err < 1e-4
 
 
-def test_mavdac_cli():
+def test_mavdac_cli() -> None:
     """run the pipeline described in the docstring of this file"""
     N_SAMPLES = 100  # number of unique points to evaluate the distortions
     RADIUS: int = 1000
@@ -213,21 +213,17 @@ def test_mavdac_cli():
             ], stdout=f)
         with open(recov_path, "r") as f:
             recov_lines = f.readlines()
-        d_est = []
+        d_est_list = []
         for line in recov_lines:
             if len(line) > 0:
-                d_est.append(line.split(",")[2:4])
-        d_est = np.array(d_est, dtype=np.float64)
+                d_est_list.append(line.split(",")[2:4])
+        d_est = np.array(d_est_list, dtype=np.float64)
 
     # sample distortion function at evaluation points
     d_true = dist_eval(p_eval, coeffs_true)
     d_true -= d_true.mean(axis=0)[None, :]
     d_est -= d_est.mean(axis=0)[None, :]
     err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
-    print(recov_lines)
-    print(d_true)
-    print(d_est)
-    print(f"residual error: {err} pixels rms")
     assert err < 1e-4
 
 
