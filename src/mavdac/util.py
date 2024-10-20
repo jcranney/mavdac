@@ -4,10 +4,11 @@ python utilities for MAVDAC
 """
 import numpy as np
 import mavdac
-from mavdac import BiVarPolyDistortions
 
 
-def coeffs_from_cogs(cogs, basis_function: BiVarPolyDistortions):
+def coeffs_from_cogs(
+    cogs, basis_function: mavdac.mavdac.BiVarPolyDistortions
+) -> None:
     """Take a Vec<Vec<Centroid>> and calculate the coefficients of the
     basis functions.
     """
@@ -44,14 +45,14 @@ def coeffs_from_cogs(cogs, basis_function: BiVarPolyDistortions):
 def run_mavdac(
     pattern: str, *, rad: int, flux_thresh: float, gridfile: str,
     poly_degree: int,
-) -> mavdac.BiVarPolyDistortions:
+) -> mavdac.mavdac.BiVarPolyDistortions:
     """run the mavdac pipeline for a pattern of images, return sampleable
     distortion basis function"""
-    imgs = mavdac.load_images(pattern)
+    imgs = mavdac.mavdac.load_images(pattern)
     im_shape = imgs[0].shape
-    grid = mavdac.Grid(gridfile)
-    cogs = mavdac.measure_cogs(imgs, grid, rad, flux_thresh)
-    basis = mavdac.BiVarPolyDistortions(poly_degree, im_shape)
+    grid = mavdac.mavdac.Grid(gridfile)
+    cogs = mavdac.mavdac.measure_cogs(imgs, grid, rad, flux_thresh)
+    basis = mavdac.mavdac.BiVarPolyDistortions(poly_degree, im_shape)
     mavdac.coeffs_from_cogs(cogs, basis)
     imgs[0].draw_on_circles(grid, rad, 500)
     imgs[0].to_fits("/tmp/sample.fits")

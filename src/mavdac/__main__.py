@@ -64,9 +64,9 @@ if not os.path.isfile(args.grid):
     ):
         print("aborting", file=sys.stderr)
         exit(2)
-    mavdac.Grid.Hex(
+    mavdac.mavdac.Grid.Hex(
         pitch=100.0, rotation=0.0,
-        offset=mavdac.Vec2D(0.0, 0.0)
+        offset=mavdac.mavdac.Vec2D(0.0, 0.0)
     ).to_yaml(args.grid)
 
 try:
@@ -87,7 +87,7 @@ try some of the following:
     exit(3)
 
 if args.coordinates:
-    coordinates = mavdac.get_coordinates(args.coordinates)
+    coordinates = mavdac.mavdac.get_coordinates(args.coordinates)
     for coordinate in coordinates:
         posx, posy = coordinate.pos
         distx, disty = basis.eval_xy(posx, posy)
