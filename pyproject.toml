@@ -27,3 +27,9 @@ mavdac = "mavdac.__main__:__name__"
 testpaths = [
     "src/tests",
 ]
+
+[tool.setuptools.package-data]
+"mavdac" = ["py.typed"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

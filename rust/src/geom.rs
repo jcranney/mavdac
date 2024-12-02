@@ -109,7 +109,7 @@ impl Grid {
     }
     /// determine all possible points of pinholes for a given grid
     pub fn all_points(&self, width: usize, height: usize) -> Vec<Vec2D> {
-        let max_rad = width.max(height)*2;
+        let max_rad = width.max(height)*4;
         match self {
             Grid::Hex { pitch, rotation, offset } => {
                 // first make a square grid with way too many points
