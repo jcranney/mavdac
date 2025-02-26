@@ -34,7 +34,7 @@ mod geom;
 pub use crate::io::{Image, Coordinate};
 pub use crate::errors::{MavDACError, Result};
 pub use crate::geom::{Centroid,Vec2D,Grid};
-pub use crate::basis::{BiVarPolyDistortions,DistortionBasis};
+pub use crate::basis::{BiVarPolyDistortions,BiVarFourierDistortions,DistortionBasis};
 
 /// A Python module implemented in Rust.
 #[pymodule]
@@ -46,6 +46,7 @@ fn mavdac(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Grid>()?;
     m.add_class::<Centroid>()?;
     m.add_class::<BiVarPolyDistortions>()?;
+    m.add_class::<BiVarFourierDistortions>()?;
     m.add_class::<Coordinate>()?;
     m.add_class::<Vec2D>()?;
     Ok(())
