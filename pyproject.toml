@@ -14,6 +14,10 @@ dynamic = ["version"]
 dependencies = [
     "numpy",
 ]
+authors = [
+  { name="Jesse Cranney", email="jesse.cranney@anu.edu.au" },
+]
+description = "MAVIS Differential Astrometric Calibrations"
 
 
 [tool.maturin]
