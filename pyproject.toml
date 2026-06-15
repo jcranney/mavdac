@@ -12,7 +12,12 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
+    "astropy>=5.2.2",
+    "mavisim>=1.1.13",
     "numpy",
+    "pydantic>=2.10.6",
+    "pytest>=8.3.5",
+    "scipy>=1.10.1",
 ]
 authors = [
   { name="Jesse Cranney", email="jesse.cranney@anu.edu.au" },
