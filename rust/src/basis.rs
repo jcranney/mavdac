@@ -98,7 +98,7 @@ impl BiVarPolyDistortions {
 impl DistortionBasis for BiVarPolyDistortions {
     fn sample(&self, pos: &Vec2D, index: usize) -> f64 {
         let (n,k) = self.nk_lut[index];
-        let Vec2D{mut x, mut y} = pos;
+        let &Vec2D{mut x, mut y} = pos;
         x -= (self.shape[1] as f64)/2.0;
         y -= (self.shape[0] as f64)/2.0;
         x /= self.shape[1] as f64;
@@ -177,7 +177,7 @@ impl BiVarFourierDistortions {
 
 impl DistortionBasis for BiVarFourierDistortions {
     fn sample(&self, pos: &Vec2D, index: usize) -> f64 {
-        let Vec2D{mut x, mut y} = pos;
+        let &Vec2D{mut x, mut y} = pos;
         // x -= (self.shape[1] as f64)/2.0;
         // y -= (self.shape[0] as f64)/2.0;
         x /= self.shape[1] as f64;

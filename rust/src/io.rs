@@ -35,7 +35,7 @@ impl Image {
     #[new]
     pub fn from_fits(filename: &str) -> Result<Image> {
         let fits = Fits::open(filename)?;
-        if let Some(hdu) = fits.get(0) {
+        match fits.get(0) { Some(hdu) => {
             match hdu.value("NAXIS")  {
                 Some(HeaderValue::IntegerNumber(2)) => (),
                 _ => return Err(MavDACError::InvalidFITS("expected NAXIS==2".to_string())),
@@ -97,13 +97,13 @@ impl Image {
                 },
             };
             Ok(Image { data, shape, shift })
-        } else {
+        } _ => {
             Err (
                 MavDACError::InvalidFITS(
                     format!("no primary hdu in {}", &filename)
                 )
             )
-        }
+        }}
     }
 
     /// save image to fits file

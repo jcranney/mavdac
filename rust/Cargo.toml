@@ -1,7 +1,7 @@
 [package]
 name = "mavdac"
 version = "0.1.6"
-edition = "2021"
+edition = "2024"
 description = "MAVIS Differential Astrometric Calibrator"
 license = "MIT"
 repository = "https://github.com/jcranney/mavdac"
