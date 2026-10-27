@@ -13,8 +13,8 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "numpy",
-    "matplotlib>=3.7.5",
-    "click>=8.4.1",
+    "matplotlib>=3.11.2",
+    "click>=8.5.0",
     "scipy-stubs>=1.17.1.5",
 ]
 authors = [{ name = "Jesse Cranney", email = "jesse.cranney@anu.edu.au" }]
@@ -23,11 +23,16 @@ description = "MAVIS Differential Astrometric Calibrations"
 [dependency-groups]
 dev = [
     "pytest>=9.1.0",
-    "mavisim>=1.1.13",
+    "mavisim>=1.1.20",
     "scipy>=1.17.1",
     "astropy>=8.0.2",
-    "pydantic>=2.13.4",
+    "pydantic>=2.14.1",
     "mypy>=2.4.0",
+    "platformdirs<4.12",  # this is to remedy an import error in pytest:
+    #    ModuleNotFoundError: No module named 'platformdirs.pytest_plugin'
+    # I haven't looked into it but seems like something that pytest will patch
+    # soon. I found the platformdirs<4.12 solution here:
+    #  https://github.com/kirodotdev/KiroCrew/blob/main/pyproject.toml
 ]
 
 [tool.maturin]
