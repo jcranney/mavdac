@@ -142,7 +142,7 @@ All versions of mavdac < 1.0.0 are subject to breaking changes between any two r
 Unit tests for the rust package will be found within each rust module, e.g., within `./rust/src/lib.rs`, under `mod tests {...}`.
 
 ## System tests
-System tests for the rust + python package (e.g., the CLI), can be found in `./src/tests`. These will include tests that generate images with known distortions that are piped through mavdac, and the measured distortion field can be checked for quality. These are already quite mature, and can be tested in any version `>=0.1.1` by running
+System tests for the rust + python package (e.g., the CLI), can be found in `./tests`. These will include tests that generate images with known distortions that are piped through mavdac, and the measured distortion field can be checked for quality. These are already quite mature, and can be tested in any version `>=0.1.1` by running
 ```bash
 pytest
 ```
