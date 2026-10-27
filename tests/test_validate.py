@@ -7,30 +7,36 @@ import subprocess
 from typing import Callable, List, Tuple
 import mavdac
 from scipy.interpolate import LinearNDInterpolator  # type: ignore
-psfs_file = "./src/tests/test_psf_gauss.fits"
-gridfile = "./src/tests/grid.yaml"
-mavis_dists = "./src/tests/mavis_dists.txt"
+
+TEST_PATH = "./tests/"
+psfs_file = TEST_PATH + "test_psf_gauss.fits"
+gridfile = TEST_PATH + "grid.yaml"
+mavis_dists = TEST_PATH + "mavis_dists.txt"
 imshape = (4000, 4000)
 
 
 def make_eval_points(n: int = 40, r: float = 15) -> List[Tuple[float, float]]:
     yy, xx = np.meshgrid(
-        *[np.linspace(-r, r, n)]*2,
+        *[np.linspace(-r, r, n)] * 2,
         indexing="ij",
     )
     xx = xx.flatten()
     yy = yy.flatten()
-    rr = (xx**2 + yy**2)**0.5
+    rr = (xx**2 + yy**2) ** 0.5
     xx = xx[rr < r]
     yy = yy[rr < r]
-    xx = xx*4000/30+2000
-    yy = yy*4000/30+2000
+    xx = xx * 4000 / 30 + 2000
+    yy = yy * 4000 / 30 + 2000
     return list(zip(xx, yy))
 
 
 def generate_image_mavisim_cli(
-    shift_x: float, shift_y: float, *, dist_pixels: Callable,
-    pinholes: List[Tuple[float, float]], filename: str
+    shift_x: float,
+    shift_y: float,
+    *,
+    dist_pixels: Callable,
+    pinholes: List[Tuple[float, float]],
+    filename: str,
 ) -> None:
     """generate an image of the calibration source with some shift in x and y
     returning the name of the file"""
@@ -40,26 +46,26 @@ def generate_image_mavisim_cli(
     d_pixels = dist_pixels(np.array([xx_pixels, yy_pixels]).T)
     xx_pixels += d_pixels[:, 0]
     yy_pixels += d_pixels[:, 1]
-    xx_as = (xx_pixels * 30/imshape[0])-30/2
-    yy_as = (yy_pixels * 30/imshape[0])-30/2
-    header = f"--header={{\"xshift\":{shift_x},\"yshift\":{shift_y}}}"
+    xx_as = (xx_pixels * 30 / imshape[0]) - 30 / 2
+    yy_as = (yy_pixels * 30 / imshape[0]) - 30 / 2
+    header = f'--header={{"xshift":{shift_x},"yshift":{shift_y}}}'
     with tempfile.NamedTemporaryFile("w") as f:
         f.write("Star RA Dec X PM_X Y PM_Y Flux\n")
         for i, star in enumerate(zip(xx_as, yy_as)):
-            flux = 1e5 if xx_as[i]**2+yy_as[i]**2 <= 13**2 else 1.0
+            flux = 1e5 if xx_as[i] ** 2 + yy_as[i] ** 2 <= 13**2 else 1.0
             f.write(f"{i} 0.0 0.0 {xx_as[i]} 0.0 {yy_as[i]} 0.0 {flux}\n")
-        result = subprocess.run([
-            "mavisim",
-            f"-o={filename}",
-            "--static=0",
-            header,
-            f.name,
-            psfs_file,
-        ])
+        result = subprocess.run(
+            [
+                "mavisim",
+                f"-o={filename}",
+                "--static=0",
+                header,
+                f.name,
+                psfs_file,
+            ]
+        )
         if result.returncode != 0:
-            raise RuntimeError(
-                f"mavisim failed, exitcode: {result.returncode}"
-            )
+            raise RuntimeError(f"mavisim failed, exitcode: {result.returncode}")
 
 
 def grid_perfect() -> List[Tuple[float, float]]:
@@ -67,32 +73,32 @@ def grid_perfect() -> List[Tuple[float, float]]:
 
 
 def grid_perturbed(std: float) -> List[Tuple[float, float]]:
-    grid = mavdac.mavdac.Grid(gridfile)
+    grid = mavdac.Grid(gridfile)
     points = grid.all_points(*imshape)
     np.random.seed(1234)
-    return [(
-        point.x + std*np.random.randn(),
-        point.y + std*np.random.randn(),
-        ) for point in points]
+    return [
+        (
+            point.x + std * np.random.randn(),
+            point.y + std * np.random.randn(),
+        )
+        for point in points
+    ]
 
 
 def grid_scaled(std: float, scale: float) -> List[Tuple[float, float]]:
-    return [(x*scale, y*scale) for (x, y) in grid_perturbed(std)]
+    return [(x * scale, y * scale) for (x, y) in grid_perturbed(std)]
 
 
 def dists_none(p: np.ndarray) -> np.ndarray:
-    return p*0
+    return p * 0
 
 
 def dists_poly(p: np.ndarray) -> np.ndarray:
     np.random.seed(1234)
-    poly = mavdac.mavdac.BiVarPolyDistortions(3, imshape)
+    poly = mavdac.BiVarPolyDistortions(3, imshape)
     coeffs = np.array(poly.coeffs)
-    poly.load_coeffs(1.0*np.random.randn(*coeffs.shape))
-    return np.array([
-        poly.eval_xy(x, y)
-        for x, y in p
-    ])
+    poly.load_coeffs(list(1.0 * np.random.randn(*coeffs.shape)))
+    return np.array([poly.eval_xy(x, y) for x, y in p])
 
 
 def dists_mavis(p: np.ndarray) -> np.ndarray:
@@ -105,7 +111,7 @@ def load_dists_from_file(file: str) -> Callable:
         lines = f.readlines()
     platescale = 0.736  # "/mm
     pixelsize = 7.5e-3  # "/pixel
-    scale = platescale/pixelsize
+    scale = platescale / pixelsize
     pos = []
     dist = []
     for line in lines:
@@ -114,25 +120,27 @@ def load_dists_from_file(file: str) -> Callable:
             float(s[0])
         except ValueError:
             continue
-        pos.append((
-            float(s[4]), float(s[5]),
-        ))
-        dist.append((
-            float(s[6])-float(s[4]), float(s[7])-float(s[5]),
-        ))
+        pos.append(
+            (
+                float(s[4]),
+                float(s[5]),
+            )
+        )
+        dist.append(
+            (
+                float(s[6]) - float(s[4]),
+                float(s[7]) - float(s[5]),
+            )
+        )
     dist_func = LinearNDInterpolator(
-        np.array(pos)*scale+imshape[0]/2,
-        np.array(dist)*scale,
+        np.array(pos) * scale + imshape[0] / 2,
+        np.array(dist) * scale,
         fill_value=0.0,
     )
     return dist_func
 
 
-pinholes = [
-    grid_perfect(),
-    grid_perturbed(1.0),
-    grid_scaled(1.0, 1.001)
-]
+pinholes = [grid_perfect(), grid_perturbed(1.0), grid_scaled(1.0, 1.001)]
 distortions = [
     dists_none,
     dists_poly,
@@ -143,7 +151,8 @@ distortions = [
 @pytest.mark.parametrize("pinholes", pinholes)
 @pytest.mark.parametrize("distortions", distortions)
 def test_mavdac_cli(
-    pinholes: List[Tuple[float, float]], distortions: Callable,
+    pinholes: List[Tuple[float, float]],
+    distortions: Callable,
     plot: bool = False,
 ) -> None:
     """run the pipeline described in the docstring of this file"""
@@ -151,8 +160,8 @@ def test_mavdac_cli(
     SHIFT_RAD: float = 50.0  # pixels
     NIMAGES: int = 3
     shifts = []
-    for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
-        shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
+    for theta in np.linspace(0, 2 * np.pi, NIMAGES + 1)[:-1]:
+        shifts.append([SHIFT_RAD * np.cos(theta), SHIFT_RAD * np.sin(theta)])
 
     with tempfile.TemporaryDirectory() as d:
         # create images
@@ -160,9 +169,11 @@ def test_mavdac_cli(
         for shift_x, shift_y in shifts:
             image_filename = os.path.join(d, f"img_{i:03d}.fits")
             generate_image_mavisim_cli(
-                shift_x=shift_x, shift_y=shift_y,
+                shift_x=shift_x,
+                shift_y=shift_y,
                 dist_pixels=distortions,
-                filename=image_filename, pinholes=pinholes,
+                filename=image_filename,
+                pinholes=pinholes,
             )
             i += 1
 
@@ -176,15 +187,18 @@ def test_mavdac_cli(
         # run mavdac
         recov_path = os.path.join(d, "recov.txt")
         with open(recov_path, "w") as f:
-            subprocess.run([
-                "mavdac",
-                os.path.join(d, "img_*.fits"),
-                coord_path,
-                f"--grid={gridfile}",
-                "--radius=30",
-                "--thresh=10000",
-                "--degree=20",
-            ], stdout=f)
+            subprocess.run(
+                [
+                    "mavdac",
+                    os.path.join(d, "img_*.fits"),
+                    coord_path,
+                    f"--grid={gridfile}",
+                    "--radius=30",
+                    "--thresh=10000",
+                    "--degree=20",
+                ],
+                stdout=f,
+            )
         with open(recov_path, "r") as f:
             recov_lines = f.readlines()
         recov_lines = [line for line in recov_lines if len(line) > 0]
@@ -194,7 +208,7 @@ def test_mavdac_cli(
         d_est = np.array(d_est, dtype=np.float64)
 
     def rms(dists):
-        return (dists.std(axis=0)**2).mean()**0.5
+        return (dists.std(axis=0) ** 2).mean() ** 0.5
 
     # sample distortion function at evaluation points
     d_true = distortions(p_eval)
@@ -208,13 +222,10 @@ def test_mavdac_cli(
     # print(f"     error: {rms(d_true - d_est)} pixels rms")
     # assert err < 1e-3
     # plate scale removed error:
-    coord_mat = np.array([
-        p_eval[:, 0],
-        p_eval[:, 1],
-        p_eval[:, 0]*0+1
-    ]).T
-    ps_filt = np.eye(coord_mat.shape[0]) - \
-        coord_mat @ np.linalg.solve(coord_mat.T @ coord_mat, coord_mat.T)
+    coord_mat = np.array([p_eval[:, 0], p_eval[:, 1], p_eval[:, 0] * 0 + 1]).T
+    ps_filt = np.eye(coord_mat.shape[0]) - coord_mat @ np.linalg.solve(
+        coord_mat.T @ coord_mat, coord_mat.T
+    )
     print("tt-ps-removed rms")
     print(f"input dist: {rms(ps_filt @ d_true)} pixels rms")
     print(f"  est dist: {rms(ps_filt @ d_est)} pixels rms")
@@ -227,20 +238,32 @@ def test_mavdac_cli(
         for i in range(len(p_eval)):
             plt.subplot(1, 2, 1)
             plt.arrow(
-                p_eval[i, 0], p_eval[i, 1],
-                sf*d_true[i, 0], sf*d_true[i, 1],
-                color="r", alpha=0.5, width=10,
+                p_eval[i, 0],
+                p_eval[i, 1],
+                sf * d_true[i, 0],
+                sf * d_true[i, 1],
+                color="r",
+                alpha=0.5,
+                width=10,
             )
             plt.arrow(
-                p_eval[i, 0], p_eval[i, 1],
-                sf*d_est[i, 0], sf*d_est[i, 1],
-                color="b", alpha=0.5, width=10,
+                p_eval[i, 0],
+                p_eval[i, 1],
+                sf * d_est[i, 0],
+                sf * d_est[i, 1],
+                color="b",
+                alpha=0.5,
+                width=10,
             )
             plt.subplot(1, 2, 2)
             plt.arrow(
-                p_eval[i, 0], p_eval[i, 1],
-                sf*d_err[i, 0], sf*d_err[i, 1],
-                color="g", alpha=0.5, width=10,
+                p_eval[i, 0],
+                p_eval[i, 1],
+                sf * d_err[i, 0],
+                sf * d_err[i, 1],
+                color="g",
+                alpha=0.5,
+                width=10,
             )
     else:
         assert err < 6.66e-3  # 50 uas rms
@@ -249,12 +272,15 @@ def test_mavdac_cli(
 if __name__ == "__main__":
     # called as a script, not from pytest
     import matplotlib.pyplot as plt
+
     plt.ion()
     for distortion in distortions:
         for pinhole in pinholes:
             plt.figure(figsize=(12, 8))
             test_mavdac_cli(
-                distortions=distortion, pinholes=pinhole, plot=True,
+                distortions=distortion,
+                pinholes=pinhole,
+                plot=True,
             )
             plt.subplot(1, 2, 1)
             plt.axis("square")

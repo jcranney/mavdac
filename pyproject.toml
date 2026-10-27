@@ -1,5 +1,5 @@
 [build-system]
-requires = ["maturin>=1.7,<2.0"]
+requires = ["maturin>=1.15,<2.0"]
 build-backend = "maturin"
 
 [project]
@@ -12,33 +12,33 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "astropy>=7.2.0",
-    "mavisim>=1.1.13",
     "numpy",
-    "pydantic>=2.13.4",
-    "pytest>=9.1.0",
-    "scipy>=1.17.1",
+    "matplotlib>=3.7.5",
+    "click>=8.4.1",
+    "scipy-stubs>=1.17.1.5",
 ]
-authors = [
-  { name="Jesse Cranney", email="jesse.cranney@anu.edu.au" },
-]
+authors = [{ name = "Jesse Cranney", email = "jesse.cranney@anu.edu.au" }]
 description = "MAVIS Differential Astrometric Calibrations"
 
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+    "mavisim>=1.1.13",
+    "scipy>=1.17.1",
+    "astropy>=8.0.2",
+    "pydantic>=2.13.4",
+    "mypy>=2.4.0",
+]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+python-source = "python"
 
 [project.scripts]
 mavdac = "mavdac.__main__:__name__"
 
-# pyproject.toml
-[tool.pytest.ini_options]
-testpaths = [
-    "src/tests",
+[tool.uv]
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "**/*.rs" },
 ]
-
-[tool.setuptools.package-data]
-"mavdac" = ["py.typed"]
-
-[tool.setuptools.packages.find]
-where = ["src"]

@@ -2,13 +2,12 @@
 """
 python utilities for MAVDAC
 """
+
 import numpy as np
 import mavdac
 
 
-def coeffs_from_cogs(
-    cogs, basis_function: mavdac.mavdac.BiVarPolyDistortions
-) -> None:
+def coeffs_from_cogs(cogs, basis_function: mavdac.BiVarPolyDistortions) -> None:
     """Take a Vec<Vec<Centroid>> and calculate the coefficients of the
     basis functions.
     """
@@ -30,29 +29,32 @@ def coeffs_from_cogs(
                 p_ijkd[i, j, k, 0] = cogik.posx - cogij.posx
                 p_ijkd[i, j, k, 1] = cogik.posy - cogij.posy
                 for ell in range(L):
-                    f_ijkl[i, j, k, ell] = (
-                        fun(cogik.posx, cogik.posy, ell) -
-                        fun(cogij.posx, cogij.posy, ell)
+                    f_ijkl[i, j, k, ell] = fun(cogik.posx, cogik.posy, ell) - fun(
+                        cogij.posx, cogij.posy, ell
                     )
     b = d_ijkd - p_ijkd
     a = f_ijkl
-    b = b.reshape([P*N*N, R]).T
-    a = a.reshape([P*N*N, L]).T
+    b = b.reshape([P * N * N, R]).T
+    a = a.reshape([P * N * N, L]).T
     coeffs = np.linalg.solve(a @ a.T, a @ b.T)
-    basis_function.load_coeffs(coeffs)
+    basis_function.load_coeffs(list(coeffs))
 
 
 def run_mavdac(
-    pattern: str, *, rad: int, flux_thresh: float, gridfile: str,
+    pattern: str,
+    *,
+    rad: int,
+    flux_thresh: float,
+    gridfile: str,
     poly_degree: int,
-) -> mavdac.mavdac.BiVarPolyDistortions:
+) -> mavdac.BiVarPolyDistortions:
     """run the mavdac pipeline for a pattern of images, return sampleable
     distortion basis function"""
-    imgs = mavdac.mavdac.load_images(pattern)
+    imgs = mavdac.load_images(pattern)
     im_shape = imgs[0].shape
-    grid = mavdac.mavdac.Grid(gridfile)
-    cogs = mavdac.mavdac.measure_cogs(imgs, grid, rad, flux_thresh)
-    basis = mavdac.mavdac.BiVarPolyDistortions(poly_degree, im_shape)
+    grid = mavdac.Grid(gridfile)
+    cogs = mavdac.measure_cogs(imgs, grid, rad, flux_thresh)
+    basis = mavdac.BiVarPolyDistortions(poly_degree, im_shape)
     mavdac.coeffs_from_cogs(cogs, basis)
     imgs[0].draw_on_circles(grid, rad, 500)
     imgs[0].to_fits("/tmp/sample.fits")

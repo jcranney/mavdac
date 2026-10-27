@@ -18,6 +18,7 @@ quantity, and the comparison between truth and recovered distortions can be
 made, showing an error in the plate scale modes but otherwise sufficient
 accuracy.
 """
+
 from astropy.io import fits  # type: ignore
 import mavisim  # type: ignore
 import numpy as np
@@ -25,15 +26,18 @@ import tempfile
 import os
 import subprocess
 from mavdac import run_mavdac
-from typing import Callable
+from typing import Callable, Tuple
 
-psfs_file = "./src/tests/test_psf_gauss.fits"
-gridfile = "./src/tests/grid.yaml"
+from numpy.typing import NDArray
+
+TEST_PATH = "./tests/"
+psfs_file = TEST_PATH + "test_psf_gauss.fits"
+gridfile = TEST_PATH + "grid.yaml"
 
 
 def generate_image(
     shift_x: float, shift_y: float, dist_pixels: Callable
-) -> fits.hdu.PrimaryHDU:
+) -> Tuple[fits.hdu.PrimaryHDU, NDArray]:
     """generate an image of the calibration source with some shift in x and y,
     returning a formatted fits.FitsHDU"""
 
@@ -53,27 +57,24 @@ def generate_image(
     pitch = 6.0
     width = 15.0
     overfill = 4.0
-    xx, yy = np.meshgrid(
-        pitch*np.arange(overfill*width/pitch),
-        pitch*np.arange(overfill*width/pitch),
+    _xx, _yy = np.meshgrid(
+        pitch * np.arange(overfill * width / pitch),
+        pitch * np.arange(overfill * width / pitch),
         indexing="xy",
     )
-    xx = xx.flatten()
-    yy = yy.flatten()
-    xx -= overfill*width/2
-    yy -= overfill*width/2
+    xx = _xx.flatten()
+    yy = _yy.flatten()
+    xx -= overfill * width / 2
+    yy -= overfill * width / 2
     p = np.concatenate([xx[None, :], yy[None, :]], axis=0)
-    transform = np.array([
-        [1.0, 0.5],
-        [0.0, (3/4)**0.5]
-    ])
+    transform = np.array([[1.0, 0.5], [0.0, (3 / 4) ** 0.5]])
     p = transform @ p
-    p = p[:, ((p[0, :] > -width/2) & (p[0, :] < width/2))]
-    p = p[:, ((p[1, :] > -width/2) & (p[1, :] < width/2))]
-    p_pixels = (p + 30/2)*4000/30
+    p = p[:, ((p[0, :] > -width / 2) & (p[0, :] < width / 2))]
+    p = p[:, ((p[1, :] > -width / 2) & (p[1, :] < width / 2))]
+    p_pixels = (p + 30 / 2) * 4000 / 30
     # add pinhole position error with 1 pixel of standard deviation:
     np.random.seed(1234)
-    p_pixels = p_pixels + 1.0*np.random.randn(*p_pixels.shape)
+    p_pixels = p_pixels + 1.0 * np.random.randn(*p_pixels.shape)
     xx_pixels, yy_pixels = p_pixels
     xx_pixels += shift_x
     yy_pixels += shift_y
@@ -86,8 +87,8 @@ def generate_image(
     yy_pixels += d_pixels[:, 1]
     xx_pixels += 0.5
     yy_pixels += 0.5
-    xx = (xx_pixels * 30/4000)-30/2
-    yy = (yy_pixels * 30/4000)-30/2
+    xx = (xx_pixels * 30 / 4000) - 30 / 2
+    yy = (yy_pixels * 30 / 4000) - 30 / 2
 
     nstars = xx.shape[0]
     source = Source(
@@ -95,11 +96,14 @@ def generate_image(
         star=np.arange(xx.shape[0]),
         flux=np.ones(nstars),
         gauss_pos=np.concatenate([xx[None, :], yy[None, :]], axis=0).T,
-        gauss_cov=np.tile((np.eye(2)*1e-9)[None, :, :], reps=[nstars, 1, 1])
+        gauss_cov=np.tile((np.eye(2) * 1e-9)[None, :, :], reps=[nstars, 1, 1]),
     )
 
     imgen = mavisim.ImageGenerator(
-        12_000, source, psfs_file=psfs_file, which_psf=0,
+        12_000,
+        source,
+        psfs_file=psfs_file,
+        which_psf=0,
     )
     imgen.main()
     im = imgen.get_rebinned_cropped(2, 30)
@@ -112,7 +116,7 @@ def generate_image(
     header["YSHIFT"] = shift_y
     return (
         fits.hdu.PrimaryHDU(data=im, header=header),
-        np.array([xx_pixels, yy_pixels]).T
+        np.array([xx_pixels, yy_pixels]).T,
     )
 
 
@@ -121,18 +125,20 @@ def test_mavdac() -> None:
     N_SAMPLES = 100  # number of unique points to evaluate the distortions
     RADIUS: int = 1000
     # define evaluation points
-    p_eval = (np.random.rand(N_SAMPLES, 2)*2-1)*RADIUS+2000
-    coeffs_true = np.array([
-        [1.0, 0.0],
-        [2.0, 0.0],
-        [3.0, 4.0],
-    ])
+    p_eval = (np.random.rand(N_SAMPLES, 2) * 2 - 1) * RADIUS + 2000
+    coeffs_true = np.array(
+        [
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 4.0],
+        ]
+    )
 
     SHIFT_RAD: float = 100.0  # pixels
     NIMAGES: int = 3
     shifts = []
-    for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
-        shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
+    for theta in np.linspace(0, 2 * np.pi, NIMAGES + 1)[:-1]:
+        shifts.append([SHIFT_RAD * np.cos(theta), SHIFT_RAD * np.sin(theta)])
 
     with tempfile.TemporaryDirectory() as d:
         # create images
@@ -140,24 +146,25 @@ def test_mavdac() -> None:
         expected_cogs = []
         for shift_x, shift_y in shifts:
             hdu, cogs = generate_image(
-                shift_x=shift_x, shift_y=shift_y,
-                dist_pixels=lambda p: dist_eval(p, coeffs_true)
+                shift_x=shift_x,
+                shift_y=shift_y,
+                dist_pixels=lambda p: dist_eval(p, coeffs_true),
             )
             expected_cogs += list(cogs)
             hdu.writeto(os.path.join(d, f"img_{i:03d}.fits"))
             i += 1
         basis = run_mavdac(
-            os.path.join(d, "img_*.fits"), rad=30, flux_thresh=10_000.0,
-            gridfile=gridfile, poly_degree=3,
+            os.path.join(d, "img_*.fits"),
+            rad=30,
+            flux_thresh=10_000.0,
+            gridfile=gridfile,
+            poly_degree=3,
         )
 
     # sample distortion function at evaluation points
     d_true = dist_eval(p_eval, coeffs_true)
-    d_est = np.array([
-        basis.eval_xy(x, y)
-        for x, y in p_eval
-    ])
-    err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
+    d_est = np.array([basis.eval_xy(x, y) for x, y in p_eval])
+    err = ((d_true - d_est).std(axis=0) ** 2).mean() ** 0.5
     assert err < 1e-4
 
 
@@ -166,18 +173,20 @@ def test_mavdac_cli() -> None:
     N_SAMPLES = 100  # number of unique points to evaluate the distortions
     RADIUS: int = 1000
     # define evaluation points
-    p_eval = (np.random.rand(N_SAMPLES, 2)*2-1)*RADIUS+2000
-    coeffs_true = np.array([
-        [1.0, 0.0],
-        [2.0, 0.0],
-        [3.0, 4.0],
-    ])
+    p_eval = (np.random.rand(N_SAMPLES, 2) * 2 - 1) * RADIUS + 2000
+    coeffs_true = np.array(
+        [
+            [1.0, 0.0],
+            [2.0, 0.0],
+            [3.0, 4.0],
+        ]
+    )
 
     SHIFT_RAD: float = 100.0  # pixels
     NIMAGES: int = 3
     shifts = []
-    for theta in np.linspace(0, 2*np.pi, NIMAGES+1)[:-1]:
-        shifts.append([SHIFT_RAD*np.cos(theta), SHIFT_RAD*np.sin(theta)])
+    for theta in np.linspace(0, 2 * np.pi, NIMAGES + 1)[:-1]:
+        shifts.append([SHIFT_RAD * np.cos(theta), SHIFT_RAD * np.sin(theta)])
 
     with tempfile.TemporaryDirectory() as d:
         # create images
@@ -185,8 +194,9 @@ def test_mavdac_cli() -> None:
         expected_cogs = []
         for shift_x, shift_y in shifts:
             hdu, cogs = generate_image(
-                shift_x=shift_x, shift_y=shift_y,
-                dist_pixels=lambda p: dist_eval(p, coeffs_true)
+                shift_x=shift_x,
+                shift_y=shift_y,
+                dist_pixels=lambda p: dist_eval(p, coeffs_true),
             )
             expected_cogs += list(cogs)
             hdu.writeto(os.path.join(d, f"img_{i:03d}.fits"))
@@ -202,15 +212,18 @@ def test_mavdac_cli() -> None:
         # run mavdac
         recov_path = os.path.join(d, "recov.txt")
         with open(recov_path, "w") as f:
-            subprocess.run([
-                "mavdac",
-                os.path.join(d, "img_*.fits"),
-                coord_path,
-                f"--grid={gridfile}",
-                "--radius=30",
-                "--thresh=10000",
-                "--degree=3",
-            ], stdout=f)
+            subprocess.run(
+                [
+                    "mavdac",
+                    os.path.join(d, "img_*.fits"),
+                    coord_path,
+                    f"--grid={gridfile}",
+                    "--radius=30",
+                    "--thresh=10000",
+                    "--degree=3",
+                ],
+                stdout=f,
+            )
         with open(recov_path, "r") as f:
             recov_lines = f.readlines()
         d_est_list = []
@@ -223,19 +236,24 @@ def test_mavdac_cli() -> None:
     d_true = dist_eval(p_eval, coeffs_true)
     d_true -= d_true.mean(axis=0)[None, :]
     d_est -= d_est.mean(axis=0)[None, :]
-    err = ((d_true - d_est).std(axis=0)**2).mean()**0.5
+    err = ((d_true - d_est).std(axis=0) ** 2).mean() ** 0.5
     assert err < 1e-4
 
 
 def fun(x, y, ell):
-    return ((x - 2000.0)/4000)**(ell+1)
+    return ((x - 2000.0) / 4000) ** (ell + 1)
 
 
 def dist_eval(pos, coeffs):
-    dist = np.array([
-        np.array([[
-            fun(x, y, ell) * coeffs[ell, 0], fun(x, y, ell) * coeffs[ell, 1]
-        ] for ell in range(coeffs.shape[0])]).sum(axis=0)
-        for x, y in pos
-    ])
+    dist = np.array(
+        [
+            np.array(
+                [
+                    [fun(x, y, ell) * coeffs[ell, 0], fun(x, y, ell) * coeffs[ell, 1]]
+                    for ell in range(coeffs.shape[0])
+                ]
+            ).sum(axis=0)
+            for x, y in pos
+        ]
+    )
     return dist
