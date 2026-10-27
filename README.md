@@ -1,4 +1,7 @@
+[![CI](https://github.com/jcranney/mavdac/actions/workflows/CI.yml/badge.svg)](https://github.com/jcranney/mavdac/actions/workflows/CI.yml) ![PyPI Version](https://img.shields.io/pypi/v/mavdac)
+
 # mavdac
+
 MAVIS Differential Astrometric Calibration. This image processing pipeline is designed to ingest images acquired during astrometric calibration of (e.g.) [MAVIS](https://mavis-ao.org), and output the estimated distortion field derived from these images. The bulk of the pipeline is written in Rust, but the most useful functions and the CLI tool are wrapped in Python.
 
 # Install
